@@ -93,11 +93,15 @@ GUN_ISIMLERI = {0: "Pzt", 1: "Sal", 2: "Çar", 3: "Per", 4: "Cum", 5: "Cmt", 6: 
 
 @app.get("/api/doktorlar")
 def get_doktorlar():
-    return {"basari": True, "data": hastane.doktorlar}
+    # Doktorları A'dan Z'ye isimlerine göre sırala
+    sirali_doktorlar = sorted(hastane.doktorlar, key=lambda x: x["isim"])
+    return {"basari": True, "data": sirali_doktorlar}
 
 @app.get("/api/istasyonlar")
 def get_istasyonlar():
-    return {"basari": True, "data": hastane.istasyonlar}
+    # İstasyonları A'dan Z'ye isimlerine göre sırala
+    sirali_istasyonlar = sorted(hastane.istasyonlar, key=lambda x: x["isim"])
+    return {"basari": True, "data": sirali_istasyonlar}
 
 @app.get("/api/doktor-detay/{doktor_id}")
 def get_doktor_detay(doktor_id: int):
