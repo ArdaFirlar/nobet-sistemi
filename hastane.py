@@ -269,6 +269,11 @@ def api_izin_ekle(istek: IzinIstegi):
         supabase_client.table("izinli_gunler").insert([{"doktor_id": istek.doktor_id, "tarih": t} for t in istek.tarihler]).execute()
     return {"basari": True, "mesaj": "İzinler başarıyla kaydedildi!"}
 
+# YENİ EKLENEN SATIR: Veritabanına yazdıktan sonra Python'un hafızasını da tazele!
+    hastane.veritabanindan_yukle(supabase_client) 
+    
+    return {"basari": True, "mesaj": "İzinler başarıyla kaydedildi!"}
+
 @app.post("/api/istenmeyen-guncelle")
 def api_istenmeyen_guncelle(istek: GuncelleIstegi):
     supabase_client.table("istenmeyen_kisiler").delete().eq("doktor_id", istek.doktor_id).execute()
