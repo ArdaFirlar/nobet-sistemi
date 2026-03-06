@@ -4,7 +4,6 @@ function App() {
   const sistemKoyuMu = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const [tema, setTema] = useState(sistemKoyuMu ? 'dark' : 'light');
 
-  // Global Ay/Yıl State'leri
   const [takvimAy, setTakvimAy] = useState(new Date().getMonth() + 1);
   const [takvimYil, setTakvimYil] = useState(new Date().getFullYear());
 
@@ -26,7 +25,6 @@ function App() {
   const [seciliIstenmeyenler, setSeciliIstenmeyenler] = useState([])
   const [kuralMesaj, setKuralMesaj] = useState(null)
 
-  // Admin Tab State
   const [adminTab, setAdminTab] = useState("mesai")
   const [matris, setMatris] = useState({})
   const [matrisModalAcik, setMatrisModalAcik] = useState(false)
@@ -34,7 +32,6 @@ function App() {
   const [oncekiAyNobetleri, setOncekiAyNobetleri] = useState([])
   const [yeniOAN, setYeniOAN] = useState({ doktor_id: "", gun_tipi: "1" })
 
-  // Ekleme Form State'leri
   const [yeniDr, setYeniDr] = useState({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false })
   const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false })
 
@@ -42,11 +39,14 @@ function App() {
   const isAdmin = seciliDoktorObj?.rol === 'Admin';
   const isAuthedAdmin = isAdmin && sifreGirildi;
 
+  // YENİ SUNUCU ADRESİMİZ (Tüm 127.0.0.1'ler burayla değişti)
+  const API_URL = 'https://nobet-sistemi-arka-yuz.onrender.com/api';
+
   useEffect(() => { temelVerileriCek(); }, [])
 
   const temelVerileriCek = () => {
-    fetch('http://127.0.0.1:8000/api/doktorlar').then(res => res.json()).then(d => { if (d.basari) setDoktorlar(d.data) })
-    fetch('http://127.0.0.1:8000/api/istasyonlar').then(res => res.json()).then(d => { if (d.basari) setIstasyonlar(d.data) })
+    fetch(`${API_URL}/doktorlar`).then(res => res.json()).then(d => { if (d.basari) setDoktorlar(d.data) })
+    fetch(`${API_URL}/istasyonlar`).then(res => res.json()).then(d => { if (d.basari) setIstasyonlar(d.data) })
   }
 
   useEffect(() => {
@@ -57,7 +57,7 @@ function App() {
   useEffect(() => {
     setIzinMesaj(null); setKuralMesaj(null); setListeDurumu(null); setSifreGirildi(false); setSifreDeneme("");
     if (seciliDoktor) {
-      fetch(`http://127.0.0.1:8000/api/doktor-detay/${seciliDoktor}`)
+      fetch(`${API_URL}/doktor-detay/${seciliDoktor}`)
         .then(res => res.json()).then(data => {
           if (data.basari) { setSeciliTarihler(data.izinler); setSeciliIstenmeyenler(data.istenmeyenler); }
         });
@@ -69,7 +69,7 @@ function App() {
 
   const mevcutListeyiGetir = async () => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/mevcut-liste?yil=${takvimYil}&ay=${takvimAy}`);
+      const res = await fetch(`${API_URL}/mevcut-liste?yil=${takvimYil}&ay=${takvimAy}`);
       const result = await res.json();
       if (result.basari) {
         setNobetListesi(result.data); setUyari(result.uyari); setListeDurumu(null);
@@ -81,16 +81,16 @@ function App() {
   }
 
   const adminVerileriniGetir = () => {
-    fetch(`http://127.0.0.1:8000/api/gunduz-mesaileri-matris?yil=${takvimYil}&ay=${takvimAy}`)
+    fetch(`${API_URL}/gunduz-mesaileri-matris?yil=${takvimYil}&ay=${takvimAy}`)
       .then(res => res.json()).then(d => { if (d.basari) setMatris(d.data); })
-    fetch('http://127.0.0.1:8000/api/onceki-ay-getir')
+    fetch(`${API_URL}/onceki-ay-getir`)
       .then(res => res.json()).then(d => { if (d.basari) setOncekiAyNobetleri(d.data); })
   }
 
   const yeniListeOlustur = async () => {
     setYukleniyor(true); setListeDurumu(null); setUyari(null);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/nobet-olustur', {
+      const res = await fetch(`${API_URL}/nobet-olustur`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ yil: takvimYil, ay: takvimAy })
       });
@@ -103,7 +103,7 @@ function App() {
 
   const listeSil = async () => {
     if (!window.confirm(`${ayIsimleri[takvimAy - 1]} ${takvimYil} tablosunu silmek istediğinize emin misiniz?`)) return;
-    const res = await fetch('http://127.0.0.1:8000/api/liste-sil', {
+    const res = await fetch(`${API_URL}/liste-sil`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ yil: takvimYil, ay: takvimAy })
     });
     const result = await res.json();
@@ -125,7 +125,7 @@ function App() {
   }
 
   const matrisKaydet = async () => {
-    await fetch('http://127.0.0.1:8000/api/gunduz-mesaisi-kaydet', {
+    await fetch(`${API_URL}/gunduz-mesaisi-kaydet`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tarih: seciliHucre.tarih, istasyon_id: seciliHucre.istasyonId, doktor_idler: seciliHucre.seciliDoktorlar })
     });
@@ -134,7 +134,7 @@ function App() {
   }
 
   const veriSil = async (tablo, id) => {
-    await fetch(`http://127.0.0.1:8000/api/veri-sil/${tablo}/${id}`, { method: 'DELETE' });
+    await fetch(`${API_URL}/veri-sil/${tablo}/${id}`, { method: 'DELETE' });
     temelVerileriCek(); if (isAuthedAdmin) adminVerileriniGetir();
   }
 
@@ -176,14 +176,10 @@ function App() {
         .excel-table td.clickable:hover { background-color: ${isDark ? '#424242' : '#e3f2fd'}; cursor: pointer; }
       `}</style>
 
-      {/* ========================================== */}
-      {/* GÜNCELLENMİŞ MATRİS MODALI (Renk Düzeltmesi) */}
-      {/* ========================================== */}
       {matrisModalAcik && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: themeStyles.modalBg, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: themeStyles.cardBg, color: themeStyles.textMain, padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: `1px solid ${themeStyles.panelBorder}` }}>
             <h3 style={{ marginTop: 0, color: themeStyles.btnPrimary }}>{seciliHucre.tarih} Görevlileri</h3>
-            {/* Burada arkaplanı inputBg ve yazıyı inputText yaparak kontrastı garanti altına aldık */}
             <div style={{ backgroundColor: themeStyles.inputBg, maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', padding: '10px', border: `1px solid ${themeStyles.panelBorder}`, borderRadius: '8px' }}>
               {doktorlar.map(dr => (
                 <label key={dr.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', cursor: 'pointer', borderBottom: `1px solid ${themeStyles.panelBorder}`, color: themeStyles.inputText }}>
@@ -246,7 +242,7 @@ function App() {
                       return <div key={gun} onClick={() => { setIzinMesaj(null); setSeciliTarihler(prev => prev.includes(gunStr) ? prev.filter(t => t !== gunStr) : [...prev, gunStr]); }} style={{ aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', backgroundColor: isSelected ? themeStyles.calendarSelected : themeStyles.inputBg, color: isSelected ? 'white' : themeStyles.inputText, border: `1px solid ${isSelected ? themeStyles.calendarSelected : themeStyles.panelBorder}` }}>{gun}</div>
                     })}
                   </div>
-                  <button onClick={async () => { const res = await fetch('http://127.0.0.1:8000/api/izin-ekle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doktor_id: parseInt(seciliDoktor), tarihler: seciliTarihler }) }); const data = await res.json(); setIzinMesaj(data.basari ? `✅ ${data.mesaj}` : `❌ ${data.mesaj}`); }} style={{ width: '100%', padding: '12px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kaydet</button>
+                  <button onClick={async () => { const res = await fetch(`${API_URL}/izin-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doktor_id: parseInt(seciliDoktor), tarihler: seciliTarihler }) }); const data = await res.json(); setIzinMesaj(data.basari ? `✅ ${data.mesaj}` : `❌ ${data.mesaj}`); }} style={{ width: '100%', padding: '12px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kaydet</button>
                   {izinMesaj && <div style={{ marginTop: '10px', textAlign: 'center', fontWeight: 'bold' }}>{izinMesaj}</div>}
                 </div>
 
@@ -263,7 +259,7 @@ function App() {
                       </label>
                     ))}
                   </div>
-                  <button onClick={async () => { const res = await fetch('http://127.0.0.1:8000/api/istenmeyen-guncelle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doktor_id: parseInt(seciliDoktor), idler: seciliIstenmeyenler }) }); const data = await res.json(); setKuralMesaj(data.basari ? `✅ ${data.mesaj}` : `❌ ${data.mesaj}`); }} style={{ padding: '12px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kaydet</button>
+                  <button onClick={async () => { const res = await fetch(`${API_URL}/istenmeyen-guncelle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doktor_id: parseInt(seciliDoktor), idler: seciliIstenmeyenler }) }); const data = await res.json(); setKuralMesaj(data.basari ? `✅ ${data.mesaj}` : `❌ ${data.mesaj}`); }} style={{ padding: '12px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kaydet</button>
                   {kuralMesaj && <div style={{ marginTop: '10px', textAlign: 'center', fontWeight: 'bold' }}>{kuralMesaj}</div>}
                 </div>
               </div>
@@ -326,7 +322,7 @@ function App() {
                           <option value="1">Son Gün Tuttu (1. ve 2. gün boş)</option>
                           <option value="2">Sondan 2. Gün Tuttu (Sadece 1. gün boş)</option>
                         </select>
-                        <button onClick={async () => { await fetch('http://127.0.0.1:8000/api/onceki-ay-ekle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniOAN) }); adminVerileriniGetir(); }} style={{ padding: '8px 15px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Devret</button>
+                        <button onClick={async () => { await fetch(`${API_URL}/onceki-ay-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniOAN) }); adminVerileriniGetir(); }} style={{ padding: '8px 15px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Devret</button>
                       </div>
                       <ul style={{ marginTop: '10px', paddingLeft: '20px', fontSize: '14px' }}>
                         {oncekiAyNobetleri.map(o => <li key={o.id}>{o.doktor} - {o.tip} <button onClick={() => veriSil('onceki_ay_nobetleri', o.id)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>X</button></li>)}
@@ -343,7 +339,7 @@ function App() {
                       <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
                         <input type="text" placeholder="İstasyon Adı" value={yeniIst.isim} onChange={e => setYeniIst({ ...yeniIst, isim: e.target.value })} style={{ padding: '8px', flex: 1, backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} />
                         <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px' }}><input type="checkbox" checked={yeniIst.nobete_engel_mi} onChange={e => setYeniIst({ ...yeniIst, nobete_engel_mi: e.target.checked })} /> Nöbete Engel?</label>
-                        <button onClick={async () => { await fetch('http://127.0.0.1:8000/api/istasyon-ekle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) }); temelVerileriCek(); }} style={{ padding: '8px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Ekle</button>
+                        <button onClick={async () => { await fetch(`${API_URL}/istasyon-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) }); temelVerileriCek(); }} style={{ padding: '8px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Ekle</button>
                       </div>
                       <ul style={{ maxHeight: '200px', overflowY: 'auto', paddingLeft: '15px', fontSize: '14px' }}>
                         {istasyonlar.map(i => <li key={i.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>{i.isim} {i.engel ? '(Engel)' : ''} <button onClick={() => veriSil('istasyonlar', i.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>Sil</button></li>)}
@@ -366,7 +362,7 @@ function App() {
                           </select>
                         </div>
                         <label style={{ display: 'flex', alignItems: 'center', fontSize: '14px', color: themeStyles.btnDanger }}><input type="checkbox" checked={yeniDr.muaf_mi} onChange={e => setYeniDr({ ...yeniDr, muaf_mi: e.target.checked })} /> Nöbetten Tamamen Muaf Mı?</label>
-                        <button onClick={async () => { await fetch('http://127.0.0.1:8000/api/doktor-ekle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniDr) }); temelVerileriCek(); }} style={{ padding: '8px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Ekle</button>
+                        <button onClick={async () => { await fetch(`${API_URL}/doktor-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniDr) }); temelVerileriCek(); }} style={{ padding: '8px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Ekle</button>
                       </div>
                       <ul style={{ maxHeight: '200px', overflowY: 'auto', paddingLeft: '15px', fontSize: '14px' }}>
                         {doktorlar.map(d => <li key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>{d.isim} ({d.kidem}) {d.muaf_mi ? '⭐' : ''} <button onClick={() => veriSil('doktorlar', d.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>Sil</button></li>)}
