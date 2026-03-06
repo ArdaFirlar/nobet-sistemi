@@ -101,8 +101,13 @@ def get_istasyonlar():
 
 @app.get("/api/doktor-detay/{doktor_id}")
 def get_doktor_detay(doktor_id: int):
-    doktor_izinleri = [iz["tarih"] for iz in hastane.izinler if iz["doktor_id"] == doktor_id]
-    doktor_istenmeyenler = [ist["istenmeyen_doktor_id"] for ist in hastane.istenmeyenler if ist["doktor_id"] == doktor_id]
+    # RAM'i tamamen devre dışı bırakıp doğrudan taze veritabanına (Supabase) bakıyoruz!
+    izin_sonuc = supabase_client.table("izinli_gunler").select("tarih").eq("doktor_id", doktor_id).execute()
+    istenmeyen_sonuc = supabase_client.table("istenmeyen_kisiler").select("istenmeyen_doktor_id").eq("doktor_id", doktor_id).execute()
+    
+    doktor_izinleri = [iz["tarih"] for iz in izin_sonuc.data] if izin_sonuc.data else []
+    doktor_istenmeyenler = [ist["istenmeyen_doktor_id"] for ist in istenmeyen_sonuc.data] if istenmeyen_sonuc.data else []
+    
     return {"basari": True, "izinler": doktor_izinleri, "istenmeyenler": doktor_istenmeyenler}
 
 @app.get("/api/mevcut-liste")
