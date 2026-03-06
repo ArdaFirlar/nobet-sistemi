@@ -1,0 +1,94 @@
+{
+    "version": "1.1.408",
+    "time": "1772666243039",
+    "generalDiagnostics": [
+        {
+            "file": "c:\\Users\\Seda Fırlar\\OneDrive\\Desktop\\Nobet Otomasyon Sistemi\\hastane.py",
+            "severity": "error",
+            "message": "Cannot access attribute \"NewBoolVar\" for class \"CpModel\"\n  Attribute \"NewBoolVar\" is unknown",
+            "range": {
+                "start": {
+                    "line": 84,
+                    "character": 47
+                },
+                "end": {
+                    "line": 84,
+                    "character": 57
+                }
+            },
+            "rule": "reportAttributeAccessIssue"
+        },
+        {
+            "file": "c:\\Users\\Seda Fırlar\\OneDrive\\Desktop\\Nobet Otomasyon Sistemi\\hastane.py",
+            "severity": "error",
+            "message": "Cannot access attribute \"Add\" for class \"CpModel\"\n  Attribute \"Add\" is unknown",
+            "range": {
+                "start": {
+                    "line": 88,
+                    "character": 26
+                },
+                "end": {
+                    "line": 88,
+                    "character": 29
+                }
+            },
+            "rule": "reportAttributeAccessIssue"
+        },
+        {
+            "file": "c:\\Users\\Seda Fırlar\\OneDrive\\Desktop\\Nobet Otomasyon Sistemi\\hastane.py",
+            "severity": "error",
+            "message": "Cannot access attribute \"Add\" for class \"CpModel\"\n  Attribute \"Add\" is unknown",
+            "range": {
+                "start": {
+                    "line": 97,
+                    "character": 18
+                },
+                "end": {
+                    "line": 97,
+                    "character": 21
+                }
+            },
+            "rule": "reportAttributeAccessIssue"
+        },
+        {
+            "file": "c:\\Users\\Seda Fırlar\\OneDrive\\Desktop\\Nobet Otomasyon Sistemi\\hastane.py",
+            "severity": "error",
+            "message": "Cannot access attribute \"Add\" for class \"CpModel\"\n  Attribute \"Add\" is unknown",
+            "range": {
+                "start": {
+                    "line": 103,
+                    "character": 30
+                },
+                "end": {
+                    "line": 103,
+                    "character": 33
+                }
+            },
+            "rule": "reportAttributeAccessIssue"
+        },
+        {
+            "file": "c:\\Users\\Seda Fırlar\\OneDrive\\Desktop\\Nobet Otomasyon Sistemi\\hastane.py",
+            "severity": "error",
+            "message": "Cannot access attribute \"Add\" for class \"CpModel\"\n  Attribute \"Add\" is unknown",
+            "range": {
+                "start": {
+                    "line": 107,
+                    "character": 18
+                },
+                "end": {
+                    "line": 107,
+                    "character": 21
+                }
+            },
+            "rule": "reportAttributeAccessIssue"
+        }
+    ],
+    "summary": {
+        "filesAnalyzed": 1,
+        "errorCount": 5,
+        "warningCount": 0,
+        "informationCount": 0,
+        "timeInSec": 0.538
+    }
+}
+
