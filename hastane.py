@@ -179,7 +179,7 @@ def nobet_olustur(istek: YeniListeIstegi):
 
     # Kural 1: Her gün TAM OLARAK 2 doktor nöbet tutar
     for gun in range(1, num_days + 1):
-        model.AddExactLinearEquation([nobet[(dr, gun)] for dr in doktor_idler], 2)
+        model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 2)
 
     # Kural 2: İzinli günler (Kesin Kural)
     for izin in hastane.izinler:
