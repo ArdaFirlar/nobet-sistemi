@@ -1,6 +1,6 @@
 import os
 import calendar
-import random # Rastgelelik için eklendi
+import random
 from datetime import datetime, date
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -133,7 +133,9 @@ def get_onceki_ay():
     veri = []
     for o in hastane.onceki_ay_nobetleri:
         dr_isim = next((d["isim"] for d in hastane.doktorlar if d["id"] == o["doktor_id"]), "Bilinmeyen")
-        veri.append({"id": o["id"], "doktor": dr_isim, "tip": "Son Gün Tuttu" if o["gun_tipi"] == "1" else "Sondan 2. Gün Tuttu"})
+        # VERİTİPİ HATASI DÜZELTİLDİ: string'e çevirerek karşılaştırıyoruz
+        tip_metni = "Son Gün Tuttu" if str(o["gun_tipi"]) == "1" else "Sondan 2. Gün Tuttu"
+        veri.append({"id": o["id"], "doktor": dr_isim, "tip": tip_metni})
     return {"basari": True, "data": veri}
 
 @app.post("/api/nobet-olustur")
@@ -142,7 +144,7 @@ def nobet_olustur(istek: YeniListeIstegi):
 
     yil = istek.yil
     ay = istek.ay
-    num_days = calendar.monthrange(yil, ay)[1]
+    num_days = int(calendar.monthrange(yil, ay)[1])
 
     aktif_doktorlar = [d for d in hastane.doktorlar if not d.get("muaf_mi", False)]
     doktor_idler = [d["id"] for d in aktif_doktorlar]
@@ -164,9 +166,11 @@ def nobet_olustur(istek: YeniListeIstegi):
         for gun in range(1, num_days + 1):
             nobet[(dr, gun)] = model.NewBoolVar(f"nobet_dr{dr}_gun{gun}")
 
+    # Her gün TAM OLARAK 2 kişi nöbet tutar
     for gun in range(1, num_days + 1):
         model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 2)
 
+    # İzinli Günler
     for izin in hastane.izinler:
         try:
             iz_tarih = datetime.strptime(izin["tarih"], "%Y-%m-%d")
@@ -174,6 +178,7 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.Add(nobet[(izin["doktor_id"], iz_tarih.day)] == 0)
         except: pass
 
+    # Gündüz Mesaisi Nöbete Engel Durumları
     engel_istasyonlar = [i["id"] for i in hastane.istasyonlar if i.get("nobete_engel_mi", False)]
     for gm in hastane.gunduz_mesaileri:
         try:
@@ -183,7 +188,30 @@ def nobet_olustur(istek: YeniListeIstegi):
                     model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
         except: pass
 
-    # Kusursuz 2 Gün Dinlenme Kuralı (Üst üste veya 1 gün arayla yazılamaz)
+    # "SERVİS" İSTASYONLARI BİRLİKTELİK YASAĞI
+    # İsminde 'servis' geçen istasyonların ID'lerini bul
+    servis_istasyon_idler = [i["id"] for i in hastane.istasyonlar if "servis" in i.get("isim", "").lower()]
+    servis_gunluk_calisanlar = {}
+    
+    for gm in hastane.gunduz_mesaileri:
+        if gm["istasyon_id"] in servis_istasyon_idler:
+            try:
+                tarih_obj = datetime.strptime(gm["tarih"], "%Y-%m-%d")
+                if tarih_obj.year == yil and tarih_obj.month == ay:
+                    key = (tarih_obj.day, gm["istasyon_id"])
+                    if key not in servis_gunluk_calisanlar:
+                        servis_gunluk_calisanlar[key] = []
+                    if gm["doktor_id"] in doktor_idler:
+                        servis_gunluk_calisanlar[key].append(gm["doktor_id"])
+            except: pass
+            
+    # Aynı gün, aynı serviste çalışanları bul ve nöbette en fazla 1'ini kullan
+    for key, dr_list in servis_gunluk_calisanlar.items():
+        gun = key[0]
+        if len(dr_list) > 1:
+            model.Add(sum(nobet[(dr, gun)] for dr in dr_list) <= 1)
+
+    # Ardışık 2 Gün Dinlenme Kuralı (Kusursuz)
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
             if gun + 1 <= num_days:
@@ -191,28 +219,19 @@ def nobet_olustur(istek: YeniListeIstegi):
             if gun + 2 <= num_days:
                 model.Add(nobet[(dr, gun)] + nobet[(dr, gun+2)] <= 1)
 
+    # Geçen Aydan Devredenler (VERİTİPİ HATASI DÜZELTİLDİ)
     for oan in hastane.onceki_ay_nobetleri:
         dr_id = oan["doktor_id"]
         if dr_id in doktor_idler:
-            if oan["gun_tipi"] == "1":
+            if str(oan["gun_tipi"]) == "1":
                 model.Add(nobet[(dr_id, 1)] == 0)
                 if num_days >= 2: model.Add(nobet[(dr_id, 2)] == 0)
-            elif oan["gun_tipi"] == "2":
+            elif str(oan["gun_tipi"]) == "2":
                 model.Add(nobet[(dr_id, 1)] == 0)
 
-    # Asistanlar için adalet sistemi
-    kalan_nobet = (num_days * 2) - (6 * len(en_comez_idler)) - (5 * len(comez_idler))
-    asistan_sayisi = len(asistan_idler)
+    # KIDEM VE ADALET KURALLARI
+    asistan_yukleri = []
     
-    if asistan_sayisi > 0 and kalan_nobet > 0:
-        ortalama_nobet = kalan_nobet // asistan_sayisi
-        fazlalik = kalan_nobet % asistan_sayisi
-        alt_sinir = min(ortalama_nobet, 4)
-        ust_sinir = min(ortalama_nobet + 1 if fazlalik > 0 else ortalama_nobet, 4)
-    else:
-        alt_sinir = 0
-        ust_sinir = 4
-
     for dr in doktor_idler:
         dr_toplam_nobet = sum(nobet[(dr, gun)] for gun in range(1, num_days + 1))
         dr_haftasonu_nobet = sum(nobet[(dr, gun)] for gun in haftasonu_gunler)
@@ -230,10 +249,18 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.Add(nobet[(dr, gun)] == 0)
                 
         elif dr in asistan_idler:
-            model.Add(dr_toplam_nobet >= alt_sinir)
-            model.Add(dr_toplam_nobet <= ust_sinir)
+            # Asistan max 4 tutabilir kesin kuralı
+            model.Add(dr_toplam_nobet <= 4)
+            
+            # Adalet için İş Yükü Skoru: Toplam Nöbet + Hafta Sonu Sayısı
+            # (Hafta sonu tutan asistanın skoru hızlı artar, otomatik olarak daha az toplam nöbete zorlanır)
+            dr_yuk = model.NewIntVar(0, 50, f"yuk_dr_{dr}")
+            model.Add(dr_yuk == dr_toplam_nobet + dr_haftasonu_nobet)
+            asistan_yukleri.append(dr_yuk)
 
     ceza_puanlari = []
+    
+    # İstenmeyen Kişiler Cezası
     for ist in hastane.istenmeyenler:
         dr1 = ist["doktor_id"]
         dr2 = ist["istenmeyen_doktor_id"]
@@ -243,17 +270,29 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.AddMultiplicationEquality(birlikte, [nobet[(dr1, gun)], nobet[(dr2, gun)]])
                 ceza_puanlari.append(birlikte * 100)
 
+    # Asistanları Hafta Sonundan Uzak Tutma Cezası
     for dr in asistan_idler:
         for gun in haftasonu_gunler:
             ceza_puanlari.append(nobet[(dr, gun)] * 50)
 
+    # ASİSTAN ADALETİNİ SAĞLAMA (En düşük ve en yüksek yük arasındaki farkı cezalandır)
+    if len(asistan_yukleri) > 1:
+        max_yuk = model.NewIntVar(0, 50, "max_yuk")
+        min_yuk = model.NewIntVar(0, 50, "min_yuk")
+        model.AddMaxEquality(max_yuk, asistan_yukleri)
+        model.AddMinEquality(min_yuk, asistan_yukleri)
+        
+        fark = model.NewIntVar(0, 50, "yuk_farki")
+        model.Add(fark == max_yuk - min_yuk)
+        # Bu farkı çok büyük bir sayıyla çarparak cezaya ekliyoruz ki yapay zeka eşitlemeden rahat etmesin
+        ceza_puanlari.append(fark * 1000)
+
+    # Hedefimiz cezaları sıfıra yaklaştırmak
     if len(ceza_puanlari) > 0:
         model.Minimize(sum(ceza_puanlari))
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 15.0
-    
-    # RANDOMİZASYON: Her seferinde farklı bir liste üretmesi için
     solver.parameters.randomize_search = True
     solver.parameters.random_seed = random.randint(1, 10000)
 
@@ -346,7 +385,6 @@ def istasyon_ekle(istek: YeniIstasyon):
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
-# YENİ: İstasyon Düzenleme
 @app.put("/api/istasyon-guncelle/{id}")
 def istasyon_guncelle(id: int, istek: YeniIstasyon):
     supabase_client.table("istasyonlar").update({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi}).eq("id", id).execute()
@@ -359,7 +397,6 @@ def doktor_ekle(istek: YeniDoktor):
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
-# YENİ: Doktor Düzenleme
 @app.put("/api/doktor-guncelle/{id}")
 def doktor_guncelle(id: int, istek: YeniDoktor):
     supabase_client.table("doktorlar").update({"isim": istek.isim, "kidem": istek.kidem, "rol": istek.rol, "muaf_mi": istek.muaf_mi}).eq("id", id).execute()
