@@ -55,7 +55,7 @@ class TopluGunduzMesaisiIstegi(BaseModel):
 class YeniIstasyon(BaseModel):
     isim: str
     nobete_engel_mi: bool
-    servis_mi: bool # YENİ EKLENEN ALAN
+    servis_mi: bool
 
 class YeniDoktor(BaseModel):
     isim: str
@@ -185,7 +185,9 @@ def nobet_olustur(istek: YeniListeIstegi):
                     model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
         except: pass
 
-    # YENİ "SERVİS" KONTROLÜ (Artık isme değil veritabanındaki kutucuğa bakıyor)
+    # =========================================================
+    # YENİ "SERVİS" KONTROLÜ (Tüm Servisler Tek Havuzda)
+    # =========================================================
     servis_istasyon_idler = [i["id"] for i in hastane.istasyonlar if i.get("servis_mi", False)]
     servis_gunluk_calisanlar = {}
     
@@ -194,17 +196,19 @@ def nobet_olustur(istek: YeniListeIstegi):
             try:
                 tarih_obj = datetime.strptime(gm["tarih"], "%Y-%m-%d")
                 if tarih_obj.year == yil and tarih_obj.month == ay:
-                    key = (tarih_obj.day, gm["istasyon_id"])
-                    if key not in servis_gunluk_calisanlar:
-                        servis_gunluk_calisanlar[key] = []
+                    gun = tarih_obj.day
+                    if gun not in servis_gunluk_calisanlar:
+                        servis_gunluk_calisanlar[gun] = set() # Aynı kişiyi iki kere saymamak için küme kullanıyoruz
                     if gm["doktor_id"] in doktor_idler:
-                        servis_gunluk_calisanlar[key].append(gm["doktor_id"])
+                        servis_gunluk_calisanlar[gun].add(gm["doktor_id"])
             except: pass
             
-    for key, dr_list in servis_gunluk_calisanlar.items():
-        gun = key[0]
-        if len(dr_list) > 1:
+    # O gün herhangi bir serviste çalışan TÜM doktorları bul, gece nöbetine en fazla 1'ini yaz!
+    for gun, dr_set in servis_gunluk_calisanlar.items():
+        if len(dr_set) > 1:
+            dr_list = list(dr_set)
             model.Add(sum(nobet[(dr, gun)] for dr in dr_list) <= 1)
+    # =========================================================
 
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
@@ -364,14 +368,12 @@ def api_istenmeyen_guncelle(istek: GuncelleIstegi):
 
 @app.post("/api/istasyon-ekle")
 def istasyon_ekle(istek: YeniIstasyon):
-    # YENİ ALAN EKLENDİ
     supabase_client.table("istasyonlar").insert({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, "servis_mi": istek.servis_mi}).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
 @app.put("/api/istasyon-guncelle/{id}")
 def istasyon_guncelle(id: int, istek: YeniIstasyon):
-    # YENİ ALAN EKLENDİ
     supabase_client.table("istasyonlar").update({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, "servis_mi": istek.servis_mi}).eq("id", id).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
