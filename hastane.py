@@ -149,22 +149,29 @@ def nobet_olustur(istek: YeniListeIstegi):
     doktor_idler = [d["id"] for d in aktif_doktorlar]
     
     if len(doktor_idler) < 2:
-        return {"basari": False, "mesaj": "En az 2 aktif doktor bulunmalıdır."}
+        return {"basari": False, "mesaj": "Nöbet yazmak için en az 2 aktif doktor bulunmalıdır."}
 
-    # Çömezleri ve Hafta sonlarını tespit et
-    comez_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") in ["EN_COMEZ", "COMEZ"]]
+    # Kıdem listelerini ve gün tiplerini çıkar
+    en_comez_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "EN_COMEZ"]
+    comez_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "COMEZ"]
+    asistan_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "ASISTAN"]
+
     haftasonu_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() >= 5]
+    persembe_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() == 3]
 
     model = cp_model.CpModel()
     nobet = {}
     
+    # 1. Değişkenleri Tanımla
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
             nobet[(dr, gun)] = model.NewBoolVar(f"nobet_dr{dr}_gun{gun}")
 
+    # 2. Her gün TAM OLARAK 2 kişi nöbet tutar
     for gun in range(1, num_days + 1):
         model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 2)
 
+    # 3. İzinli Günler
     for izin in hastane.izinler:
         try:
             iz_tarih = datetime.strptime(izin["tarih"], "%Y-%m-%d")
@@ -172,6 +179,7 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.Add(nobet[(izin["doktor_id"], iz_tarih.day)] == 0)
         except: pass
 
+    # 4. Gündüz Mesaisi Çakışmaları
     engel_istasyonlar = [i["id"] for i in hastane.istasyonlar if i.get("nobete_engel_mi", False)]
     for gm in hastane.gunduz_mesaileri:
         try:
@@ -181,11 +189,13 @@ def nobet_olustur(istek: YeniListeIstegi):
                     model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
         except: pass
 
+    # 5. İki Gün Dinlenme Kuralı
     for dr in doktor_idler:
         for gun in range(1, num_days - 1):
             model.AddImplication(nobet[(dr, gun)], nobet[(dr, gun+1)].Not())
             model.AddImplication(nobet[(dr, gun)], nobet[(dr, gun+2)].Not())
 
+    # 6. Geçen Aydan Devredenler
     for oan in hastane.onceki_ay_nobetleri:
         dr_id = oan["doktor_id"]
         if dr_id in doktor_idler:
@@ -195,16 +205,39 @@ def nobet_olustur(istek: YeniListeIstegi):
             elif oan["gun_tipi"] == "2":
                 model.Add(nobet[(dr_id, 1)] == 0)
 
-    # Kota Sınırları - Çömezler için maksimum kotayı esnettik
-    min_nobet = max(0, (num_days * 2) // len(doktor_idler) - 1)
+    # ====================================================
+    # 7. KESİN VE KATI KİDEM KURALLARI (Senin İsteklerin)
+    # ====================================================
     for dr in doktor_idler:
-        dr_nobetleri = [nobet[(dr, gun)] for gun in range(1, num_days + 1)]
-        model.Add(sum(dr_nobetleri) >= min_nobet)
-        # Çömezler kotayı rahat doldursun diye üst sınırı daha yüksek tuttuk
-        max_nobet_limiti = ((num_days * 2) // len(doktor_idler)) + (4 if dr in comez_idler else 2)
-        model.Add(sum(dr_nobetleri) <= max_nobet_limiti)
+        dr_toplam_nobet = sum(nobet[(dr, gun)] for gun in range(1, num_days + 1))
+        dr_haftasonu_nobet = sum(nobet[(dr, gun)] for gun in haftasonu_gunler)
+        
+        # EN ÇÖMEZ: Tam 6 nöbet, Tam 3 haftasonu, Perşembe Yasak
+        if dr in en_comez_idler:
+            model.Add(dr_toplam_nobet == 6)
+            model.Add(dr_haftasonu_nobet == 3)
+            for gun in persembe_gunler:
+                model.Add(nobet[(dr, gun)] == 0)
+                
+        # ÇÖMEZ: Tam 5 nöbet, Tam 2 haftasonu, Perşembe Yasak
+        elif dr in comez_idler:
+            model.Add(dr_toplam_nobet == 5)
+            model.Add(dr_haftasonu_nobet == 2)
+            for gun in persembe_gunler:
+                model.Add(nobet[(dr, gun)] == 0)
+                
+        # ASİSTAN: Ayda maksimum 4 nöbet
+        elif dr in asistan_idler:
+            model.Add(dr_toplam_nobet <= 4)
+            
 
+
+    # ====================================================
+    # 8. CEZA PUANLARI (Yapay Zekayı Yönlendirme)
+    # ====================================================
     ceza_puanlari = []
+    
+    # Kural A: İstenmeyen Kişiler (İkisi aynı gün tutarsa 100 ceza puanı)
     for ist in hastane.istenmeyenler:
         dr1 = ist["doktor_id"]
         dr2 = ist["istenmeyen_doktor_id"]
@@ -212,21 +245,16 @@ def nobet_olustur(istek: YeniListeIstegi):
             for gun in range(1, num_days + 1):
                 birlikte = model.NewBoolVar(f"birlikte_{dr1}_{dr2}_gun{gun}")
                 model.AddMultiplicationEquality(birlikte, [nobet[(dr1, gun)], nobet[(dr2, gun)]])
-                ceza_puanlari.append(birlikte)
+                ceza_puanlari.append(birlikte * 100)
 
-    # Çömezleri önceliklendirme ödül sistemi eklendi!
-    odul_puanlari = []
-    for dr in comez_idler:
-        for gun in range(1, num_days + 1):
-            puan = 10 if gun in haftasonu_gunler else 5
-            odul_puanlari.append(nobet[(dr, gun)] * puan)
+    # Kural B: Asistanları Hafta Sonundan Uzak Tut! (Asistan haftasonu tutarsa 50 ceza puanı)
+    for dr in asistan_idler:
+        for gun in haftasonu_gunler:
+            ceza_puanlari.append(nobet[(dr, gun)] * 50)
 
-    toplam_ceza_degeri = sum(ceza_puanlari) * 100
-    toplam_odul_degeri = sum(odul_puanlari)
-
-    # Amaç: Cezaları olabildiğince azalt, Çömez ödüllerini olabildiğince arttır.
-    if len(ceza_puanlari) > 0 or len(odul_puanlari) > 0:
-        model.Minimize(toplam_ceza_degeri - toplam_odul_degeri)
+    # Amacımız bu cezaları olabildiğince sıfıra indirmek
+    if len(ceza_puanlari) > 0:
+        model.Minimize(sum(ceza_puanlari))
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 15.0
@@ -236,20 +264,28 @@ def nobet_olustur(istek: YeniListeIstegi):
         liste_json = {}
         for gun in range(1, num_days + 1):
             tarih_str = f"{yil}-{ay:02d}-{gun:02d}"
+            gun_index = datetime(yil, ay, gun).weekday()
             nobetciler_idler = [dr for dr in doktor_idler if solver.Value(nobet[(dr, gun)]) == 1]
             nobetciler_isimler = [next(d["isim"] for d in aktif_doktorlar if d["id"] == i) for i in nobetciler_idler]
-            liste_json[tarih_str] = { "gun_adi": GUN_ISIMLERI[datetime(yil, ay, gun).weekday()], "nobetciler": nobetciler_isimler }
+            
+            liste_json[tarih_str] = {
+                "gun_adi": GUN_ISIMLERI[gun_index],
+                "nobetciler": nobetciler_isimler
+            }
         
+        uyari_metni = None
         toplam_ceza = solver.Value(sum(ceza_puanlari)) if len(ceza_puanlari) > 0 else 0
-        uyari_metni = f"Dikkat: {toplam_ceza} adet istenmeyen kişi eşleşmesi yapıldı." if toplam_ceza > 0 else None
+        if toplam_ceza > 0:
+            uyari_metni = f"Dikkat: Kurallar sıkı olduğu için AI bazı tavizler verdi. (Ceza Skoru: {toplam_ceza})"
 
         supabase_client.table("aylik_listeler").delete().eq("yil", yil).eq("ay", ay).execute()
-        supabase_client.table("aylik_listeler").insert({"yil": yil, "ay": ay, "liste_json": liste_json, "uyari_metni": uyari_metni}).execute()
+        supabase_client.table("aylik_listeler").insert({
+            "yil": yil, "ay": ay, "liste_json": liste_json, "uyari_metni": uyari_metni
+        }).execute()
         
         return {"basari": True}
     else:
         return {"basari": False, "mesaj": "Kurallar çok sıkı, hiçbir çözüm bulunamadı."}
-
 
 @app.post("/api/liste-sil")
 def liste_sil(istek: YeniListeIstegi):
