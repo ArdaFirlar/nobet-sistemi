@@ -231,13 +231,14 @@ def nobet_olustur(istek: YeniListeIstegi):
         dr2 = ist["istenmeyen_doktor_id"]
         if dr1 in doktor_idler and dr2 in doktor_idler:
             for gun in range(1, num_days + 1):
-                # İkisi aynı gün tutuyorsa ceza yazılır (Sistem tıkanırsa mecbur kalıp yazar, ama kaçınır)
+                # İkisi aynı gün tutuyorsa ceza yazılır
                 birlikte = model.NewBoolVar(f"birlikte_{dr1}_{dr2}_gun{gun}")
                 model.AddMultiplicationEquality(birlikte, [nobet[(dr1, gun)], nobet[(dr2, gun)]])
                 ceza_puanlari.append(birlikte)
 
-    # Amacımız bu ceza puanını sıfıra indirmek / minimize etmek
-    model.Minimize(sum(ceza_puanlari))
+    # YENİ EKLENEN KORUMA: Eğer ceza listesi boşsa Minimize etmeye çalışma!
+    if len(ceza_puanlari) > 0:
+        model.Minimize(sum(ceza_puanlari))
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 15.0 # Çok zorlanırsa en fazla 15 sn düşünsün
@@ -258,8 +259,10 @@ def nobet_olustur(istek: YeniListeIstegi):
             }
         
         uyari_metni = None
-        if solver.Value(sum(ceza_puanlari)) > 0:
-            uyari_metni = f"Dikkat: Kurallar çok sıkı olduğu için {solver.Value(sum(ceza_puanlari))} adet 'istenmeyen kişi' eşleşmesi yapılmak zorunda kalındı."
+        # YENİ EKLENEN KORUMA: Eğer ceza listesi boşsa hata vermemesi için kontrol
+        toplam_ceza = solver.Value(sum(ceza_puanlari)) if len(ceza_puanlari) > 0 else 0
+        if toplam_ceza > 0:
+            uyari_metni = f"Dikkat: Kurallar çok sıkı olduğu için {toplam_ceza} adet 'istenmeyen kişi' eşleşmesi yapılmak zorunda kalındı."
 
         # Eski varsa sil ve yenisini kaydet
         supabase_client.table("aylik_listeler").delete().eq("yil", yil).eq("ay", ay).execute()
@@ -270,7 +273,6 @@ def nobet_olustur(istek: YeniListeIstegi):
         return {"basari": True}
     else:
         return {"basari": False, "mesaj": "Kurallar çok sıkı, hiçbir çözüm bulunamadı."}
-
 
 # ==========================================
 # 7. VERİ DEĞİŞTİRME/SİLME UÇ NOKTALARI
