@@ -208,6 +208,22 @@ def nobet_olustur(istek: YeniListeIstegi):
     # ====================================================
     # 7. KESİN VE KATI KİDEM KURALLARI (Senin İsteklerin)
     # ====================================================
+    
+    # Asistanlar için tam adaletli kota hesaplaması:
+    kalan_nobet = (num_days * 2) - (6 * len(en_comez_idler)) - (5 * len(comez_idler))
+    asistan_sayisi = len(asistan_idler)
+    
+    if asistan_sayisi > 0 and kalan_nobet > 0:
+        ortalama_nobet = kalan_nobet // asistan_sayisi
+        fazlalik = kalan_nobet % asistan_sayisi
+        
+        # Her asistan minimum 'ortalama', maksimum 'ortalama + 1' nöbet tutabilir (Ama 4'ü asla geçemez)
+        alt_sinir = min(ortalama_nobet, 4)
+        ust_sinir = min(ortalama_nobet + 1 if fazlalik > 0 else ortalama_nobet, 4)
+    else:
+        alt_sinir = 0
+        ust_sinir = 4
+
     for dr in doktor_idler:
         dr_toplam_nobet = sum(nobet[(dr, gun)] for gun in range(1, num_days + 1))
         dr_haftasonu_nobet = sum(nobet[(dr, gun)] for gun in haftasonu_gunler)
@@ -226,12 +242,11 @@ def nobet_olustur(istek: YeniListeIstegi):
             for gun in persembe_gunler:
                 model.Add(nobet[(dr, gun)] == 0)
                 
-        # ASİSTAN: Ayda maksimum 4 nöbet
+        # ASİSTAN: Ayda maksimum 4 nöbet ve Adil Dağılım
         elif dr in asistan_idler:
-            model.Add(dr_toplam_nobet <= 4)
+            model.Add(dr_toplam_nobet >= alt_sinir)
+            model.Add(dr_toplam_nobet <= ust_sinir)
             
-
-
     # ====================================================
     # 8. CEZA PUANLARI (Yapay Zekayı Yönlendirme)
     # ====================================================
