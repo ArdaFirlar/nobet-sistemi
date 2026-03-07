@@ -28,16 +28,18 @@ function App() {
   const [adminTab, setAdminTab] = useState("mesai")
   const [matris, setMatris] = useState({})
 
-  // Günlük Seçim Modalı
   const [matrisModalAcik, setMatrisModalAcik] = useState(false)
   const [seciliHucre, setSeciliHucre] = useState({ tarih: "", istasyonId: null, seciliDoktorlar: [] })
 
-  // Tüm Ay Toplu Seçim Modalı
   const [topluModalAcik, setTopluModalAcik] = useState(false)
   const [seciliTopluIstasyon, setSeciliTopluIstasyon] = useState({ id: null, isim: "", seciliDoktorlar: [] })
 
   const [oncekiAyNobetleri, setOncekiAyNobetleri] = useState([])
   const [yeniOAN, setYeniOAN] = useState({ doktor_id: "", gun_tipi: "1" })
+
+  // DÜZENLEME (EDİT) İÇİN YENİ STATELER
+  const [duzenlenenDrId, setDuzenlenenDrId] = useState(null)
+  const [duzenlenenIstId, setDuzenlenenIstId] = useState(null)
 
   const [yeniDr, setYeniDr] = useState({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false })
   const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false })
@@ -116,7 +118,6 @@ function App() {
     if (result.basari) mevcutListeyiGetir();
   }
 
-  // --- HÜCRE İŞLEMLERİ (Günlük) ---
   const hucreTikla = (tarih, istId) => {
     const varOlanlar = matris[tarih]?.[istId] || [];
     setSeciliHucre({ tarih, istasyonId: istId, seciliDoktorlar: varOlanlar });
@@ -140,7 +141,6 @@ function App() {
     adminVerileriniGetir();
   }
 
-  // --- SÜTUN İŞLEMLERİ (Tüm Ay Toplu) ---
   const sutunTikla = (istId, istIsim) => {
     setSeciliTopluIstasyon({ id: istId, isim: istIsim, seciliDoktorlar: [] });
     setTopluModalAcik(true);
@@ -165,8 +165,42 @@ function App() {
   }
 
   const veriSil = async (tablo, id) => {
+    if (!window.confirm("Bu veriyi silmek istediğinize emin misiniz?")) return;
     await fetch(`${API_URL}/veri-sil/${tablo}/${id}`, { method: 'DELETE' });
     temelVerileriCek(); if (isAuthedAdmin) adminVerileriniGetir();
+  }
+
+  // --- YENİ EKLENEN DÜZENLEME (EDİT) FONKSİYONLARI ---
+  const istasyonKaydet = async () => {
+    if (duzenlenenIstId) {
+      await fetch(`${API_URL}/istasyon-guncelle/${duzenlenenIstId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) });
+      setDuzenlenenIstId(null);
+    } else {
+      await fetch(`${API_URL}/istasyon-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) });
+    }
+    setYeniIst({ isim: "", nobete_engel_mi: false });
+    temelVerileriCek();
+  }
+
+  const istasyonDuzenlemeyiBaslat = (ist) => {
+    setDuzenlenenIstId(ist.id);
+    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi });
+  }
+
+  const doktorKaydet = async () => {
+    if (duzenlenenDrId) {
+      await fetch(`${API_URL}/doktor-guncelle/${duzenlenenDrId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniDr) });
+      setDuzenlenenDrId(null);
+    } else {
+      await fetch(`${API_URL}/doktor-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniDr) });
+    }
+    setYeniDr({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false });
+    temelVerileriCek();
+  }
+
+  const doktorDuzenlemeyiBaslat = (dr) => {
+    setDuzenlenenDrId(dr.id);
+    setYeniDr({ isim: dr.isim, kidem: dr.kidem, rol: dr.rol, muaf_mi: dr.muaf_mi });
   }
 
   const paylasimMetniOlustur = () => {
@@ -206,7 +240,6 @@ function App() {
         .excel-table th { position: sticky; top: 0; background-color: ${themeStyles.tableHeader}; z-index: 10; }
         .excel-table td.clickable:hover, .excel-table th.clickable:hover { background-color: ${isDark ? '#424242' : '#e3f2fd'}; cursor: pointer; }
         
-        /* MOBİL UYUMLULUK KODLARI */
         @media (max-width: 768px) {
           .mobil-grid { grid-template-columns: 1fr !important; }
           .mobil-flex-kolon { flex-direction: column !important; }
@@ -216,7 +249,6 @@ function App() {
         }
       `}</style>
 
-      {/* GÜNLÜK HÜCRE MODALI */}
       {matrisModalAcik && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: themeStyles.modalBg, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: themeStyles.cardBg, color: themeStyles.textMain, padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: `1px solid ${themeStyles.panelBorder}` }}>
@@ -237,7 +269,6 @@ function App() {
         </div>
       )}
 
-      {/* TÜM AY TOPLU SEÇİM MODALI */}
       {topluModalAcik && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: themeStyles.modalBg, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: themeStyles.cardBg, color: themeStyles.textMain, padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: `1px solid ${themeStyles.panelBorder}` }}>
@@ -407,19 +438,30 @@ function App() {
                 {adminTab === "veri" && (
                   <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                     <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
-                      <h4 style={{ marginTop: 0 }}>İstasyon Yönetimi</h4>
+                      <h4 style={{ marginTop: 0 }}>{duzenlenenIstId ? 'İstasyonu Düzenle' : 'Yeni İstasyon Ekle'}</h4>
                       <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
                         <input type="text" placeholder="İstasyon Adı" value={yeniIst.isim} onChange={e => setYeniIst({ ...yeniIst, isim: e.target.value })} style={{ padding: '8px', flex: 1, backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} className="mobil-buton-tam" />
                         <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px' }} className="mobil-buton-tam"><input type="checkbox" checked={yeniIst.nobete_engel_mi} onChange={e => setYeniIst({ ...yeniIst, nobete_engel_mi: e.target.checked })} /> Nöbete Engel?</label>
-                        <button onClick={async () => { await fetch(`${API_URL}/istasyon-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) }); temelVerileriCek(); }} style={{ padding: '8px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} className="mobil-buton-tam">Ekle</button>
+                        <button onClick={istasyonKaydet} style={{ padding: '8px', backgroundColor: duzenlenenIstId ? '#ff9800' : themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} className="mobil-buton-tam">
+                          {duzenlenenIstId ? 'Güncelle' : 'Ekle'}
+                        </button>
+                        {duzenlenenIstId && <button onClick={() => { setDuzenlenenIstId(null); setYeniIst({ isim: "", nobete_engel_mi: false }); }} style={{ padding: '8px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>İptal</button>}
                       </div>
                       <ul style={{ maxHeight: '200px', overflowY: 'auto', paddingLeft: '15px', fontSize: '13px' }}>
-                        {istasyonlar.map(i => <li key={i.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>{i.isim} {i.engel ? '(Engel)' : ''} <button onClick={() => veriSil('istasyonlar', i.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>Sil</button></li>)}
+                        {istasyonlar.map(i => (
+                          <li key={i.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${themeStyles.panelBorder}` }}>
+                            <span>{i.isim} {i.nobete_engel_mi ? '(Engel)' : ''}</span>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                              <button onClick={() => istasyonDuzenlemeyiBaslat(i)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️ Düzenle</button>
+                              <button onClick={() => veriSil('istasyonlar', i.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️ Sil</button>
+                            </div>
+                          </li>
+                        ))}
                       </ul>
                     </div>
 
                     <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
-                      <h4 style={{ marginTop: 0 }}>Doktor Yönetimi</h4>
+                      <h4 style={{ marginTop: 0 }}>{duzenlenenDrId ? 'Doktoru Düzenle' : 'Yeni Doktor Ekle'}</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
                         <input type="text" placeholder="Doktor Adı Soyadı" value={yeniDr.isim} onChange={e => setYeniDr({ ...yeniDr, isim: e.target.value })} style={{ padding: '8px', backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} />
                         <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '10px' }}>
@@ -434,10 +476,24 @@ function App() {
                           </select>
                         </div>
                         <label style={{ display: 'flex', alignItems: 'center', fontSize: '13px', color: themeStyles.btnDanger }}><input type="checkbox" checked={yeniDr.muaf_mi} onChange={e => setYeniDr({ ...yeniDr, muaf_mi: e.target.checked })} /> Nöbetten Tamamen Muaf Mı?</label>
-                        <button onClick={async () => { await fetch(`${API_URL}/doktor-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniDr) }); temelVerileriCek(); }} style={{ padding: '8px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', width: '100%' }}>Ekle</button>
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button onClick={doktorKaydet} style={{ flex: 1, padding: '8px', backgroundColor: duzenlenenDrId ? '#ff9800' : themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                            {duzenlenenDrId ? 'Güncelle' : 'Ekle'}
+                          </button>
+                          {duzenlenenDrId && <button onClick={() => { setDuzenlenenDrId(null); setYeniDr({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false }); }} style={{ flex: 1, padding: '8px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>İptal</button>}
+                        </div>
                       </div>
                       <ul style={{ maxHeight: '200px', overflowY: 'auto', paddingLeft: '15px', fontSize: '13px' }}>
-                        {doktorlar.map(d => <li key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>{d.isim} ({d.kidem}) {d.muaf_mi ? '⭐' : ''} <button onClick={() => veriSil('doktorlar', d.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>Sil</button></li>)}
+                        {doktorlar.map(d => (
+                          <li key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${themeStyles.panelBorder}` }}>
+                            <span>{d.isim} ({d.kidem}) {d.muaf_mi ? '⭐' : ''}</span>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                              <button onClick={() => doktorDuzenlemeyiBaslat(d)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️ Düzenle</button>
+                              <button onClick={() => veriSil('doktorlar', d.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️ Sil</button>
+                            </div>
+                          </li>
+                        ))}
                       </ul>
                     </div>
                   </div>
@@ -456,7 +512,9 @@ function App() {
           )}
 
           {listeDurumu && <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, textAlign: 'center', fontWeight: 'bold', fontSize: '16px' }}>{listeDurumu}</div>}
-          {uyari && <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '12px', marginBottom: '20px', fontWeight: 'bold', boxShadow: themeStyles.cardShadow, fontSize: '14px' }}>{uyari}</div>}
+
+          {/* UYARI MESAJI: SADECE YÖNETİCİ ŞİFRESİ GİRİLDİĞİNDE GÖSTERİLİR */}
+          {uyari && isAuthedAdmin && <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '12px', marginBottom: '20px', fontWeight: 'bold', boxShadow: themeStyles.cardShadow, fontSize: '14px' }}>{uyari}</div>}
 
           {nobetListesi && (
             <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, overflowX: 'auto' }}>
