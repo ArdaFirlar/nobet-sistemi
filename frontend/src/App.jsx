@@ -37,12 +37,12 @@ function App() {
   const [oncekiAyNobetleri, setOncekiAyNobetleri] = useState([])
   const [yeniOAN, setYeniOAN] = useState({ doktor_id: "", gun_tipi: "1" })
 
-  // DÜZENLEME (EDİT) İÇİN YENİ STATELER
   const [duzenlenenDrId, setDuzenlenenDrId] = useState(null)
   const [duzenlenenIstId, setDuzenlenenIstId] = useState(null)
 
   const [yeniDr, setYeniDr] = useState({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false })
-  const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false })
+  // YENİ ALAN: servis_mi state'e eklendi
+  const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false, servis_mi: false })
 
   const seciliDoktorObj = doktorlar.find(d => d.id.toString() === seciliDoktor.toString());
   const isAdmin = seciliDoktorObj?.rol === 'Admin';
@@ -170,7 +170,6 @@ function App() {
     temelVerileriCek(); if (isAuthedAdmin) adminVerileriniGetir();
   }
 
-  // --- YENİ EKLENEN DÜZENLEME (EDİT) FONKSİYONLARI ---
   const istasyonKaydet = async () => {
     if (duzenlenenIstId) {
       await fetch(`${API_URL}/istasyon-guncelle/${duzenlenenIstId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) });
@@ -178,13 +177,13 @@ function App() {
     } else {
       await fetch(`${API_URL}/istasyon-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) });
     }
-    setYeniIst({ isim: "", nobete_engel_mi: false });
+    setYeniIst({ isim: "", nobete_engel_mi: false, servis_mi: false });
     temelVerileriCek();
   }
 
   const istasyonDuzenlemeyiBaslat = (ist) => {
     setDuzenlenenIstId(ist.id);
-    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi });
+    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi, servis_mi: ist.servis_mi || false });
   }
 
   const doktorKaydet = async () => {
@@ -441,16 +440,30 @@ function App() {
                       <h4 style={{ marginTop: 0 }}>{duzenlenenIstId ? 'İstasyonu Düzenle' : 'Yeni İstasyon Ekle'}</h4>
                       <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
                         <input type="text" placeholder="İstasyon Adı" value={yeniIst.isim} onChange={e => setYeniIst({ ...yeniIst, isim: e.target.value })} style={{ padding: '8px', flex: 1, backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} className="mobil-buton-tam" />
-                        <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px' }} className="mobil-buton-tam"><input type="checkbox" checked={yeniIst.nobete_engel_mi} onChange={e => setYeniIst({ ...yeniIst, nobete_engel_mi: e.target.checked })} /> Nöbete Engel?</label>
+
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: themeStyles.btnDanger }} className="mobil-buton-tam">
+                            <input type="checkbox" checked={yeniIst.nobete_engel_mi} onChange={e => setYeniIst({ ...yeniIst, nobete_engel_mi: e.target.checked })} /> Nöbete Engel?
+                          </label>
+                          {/* YENİ CHECKBOX: Servis Mi? */}
+                          <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#ff9800' }} className="mobil-buton-tam">
+                            <input type="checkbox" checked={yeniIst.servis_mi} onChange={e => setYeniIst({ ...yeniIst, servis_mi: e.target.checked })} /> Servis mi?
+                          </label>
+                        </div>
+
                         <button onClick={istasyonKaydet} style={{ padding: '8px', backgroundColor: duzenlenenIstId ? '#ff9800' : themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} className="mobil-buton-tam">
                           {duzenlenenIstId ? 'Güncelle' : 'Ekle'}
                         </button>
-                        {duzenlenenIstId && <button onClick={() => { setDuzenlenenIstId(null); setYeniIst({ isim: "", nobete_engel_mi: false }); }} style={{ padding: '8px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>İptal</button>}
+                        {duzenlenenIstId && <button onClick={() => { setDuzenlenenIstId(null); setYeniIst({ isim: "", nobete_engel_mi: false, servis_mi: false }); }} style={{ padding: '8px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>İptal</button>}
                       </div>
                       <ul style={{ maxHeight: '200px', overflowY: 'auto', paddingLeft: '15px', fontSize: '13px' }}>
                         {istasyonlar.map(i => (
                           <li key={i.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${themeStyles.panelBorder}` }}>
-                            <span>{i.isim} {i.nobete_engel_mi ? '(Engel)' : ''}</span>
+                            <span>
+                              {i.isim}
+                              {i.nobete_engel_mi ? <span style={{ color: 'red' }}> (Engel)</span> : ''}
+                              {i.servis_mi ? <span style={{ color: '#ff9800' }}> (Servis)</span> : ''}
+                            </span>
                             <div style={{ display: 'flex', gap: '10px' }}>
                               <button onClick={() => istasyonDuzenlemeyiBaslat(i)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️ Düzenle</button>
                               <button onClick={() => veriSil('istasyonlar', i.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️ Sil</button>
@@ -513,7 +526,6 @@ function App() {
 
           {listeDurumu && <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, textAlign: 'center', fontWeight: 'bold', fontSize: '16px' }}>{listeDurumu}</div>}
 
-          {/* UYARI MESAJI: SADECE YÖNETİCİ ŞİFRESİ GİRİLDİĞİNDE GÖSTERİLİR */}
           {uyari && isAuthedAdmin && <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '12px', marginBottom: '20px', fontWeight: 'bold', boxShadow: themeStyles.cardShadow, fontSize: '14px' }}>{uyari}</div>}
 
           {nobetListesi && (

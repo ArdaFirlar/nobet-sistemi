@@ -55,6 +55,7 @@ class TopluGunduzMesaisiIstegi(BaseModel):
 class YeniIstasyon(BaseModel):
     isim: str
     nobete_engel_mi: bool
+    servis_mi: bool # YENİ EKLENEN ALAN
 
 class YeniDoktor(BaseModel):
     isim: str
@@ -133,7 +134,6 @@ def get_onceki_ay():
     veri = []
     for o in hastane.onceki_ay_nobetleri:
         dr_isim = next((d["isim"] for d in hastane.doktorlar if d["id"] == o["doktor_id"]), "Bilinmeyen")
-        # VERİTİPİ HATASI DÜZELTİLDİ: string'e çevirerek karşılaştırıyoruz
         tip_metni = "Son Gün Tuttu" if str(o["gun_tipi"]) == "1" else "Sondan 2. Gün Tuttu"
         veri.append({"id": o["id"], "doktor": dr_isim, "tip": tip_metni})
     return {"basari": True, "data": veri}
@@ -166,11 +166,9 @@ def nobet_olustur(istek: YeniListeIstegi):
         for gun in range(1, num_days + 1):
             nobet[(dr, gun)] = model.NewBoolVar(f"nobet_dr{dr}_gun{gun}")
 
-    # Her gün TAM OLARAK 2 kişi nöbet tutar
     for gun in range(1, num_days + 1):
         model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 2)
 
-    # İzinli Günler
     for izin in hastane.izinler:
         try:
             iz_tarih = datetime.strptime(izin["tarih"], "%Y-%m-%d")
@@ -178,7 +176,6 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.Add(nobet[(izin["doktor_id"], iz_tarih.day)] == 0)
         except: pass
 
-    # Gündüz Mesaisi Nöbete Engel Durumları
     engel_istasyonlar = [i["id"] for i in hastane.istasyonlar if i.get("nobete_engel_mi", False)]
     for gm in hastane.gunduz_mesaileri:
         try:
@@ -188,9 +185,8 @@ def nobet_olustur(istek: YeniListeIstegi):
                     model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
         except: pass
 
-    # "SERVİS" İSTASYONLARI BİRLİKTELİK YASAĞI
-    # İsminde 'servis' geçen istasyonların ID'lerini bul
-    servis_istasyon_idler = [i["id"] for i in hastane.istasyonlar if "servis" in i.get("isim", "").lower()]
+    # YENİ "SERVİS" KONTROLÜ (Artık isme değil veritabanındaki kutucuğa bakıyor)
+    servis_istasyon_idler = [i["id"] for i in hastane.istasyonlar if i.get("servis_mi", False)]
     servis_gunluk_calisanlar = {}
     
     for gm in hastane.gunduz_mesaileri:
@@ -205,13 +201,11 @@ def nobet_olustur(istek: YeniListeIstegi):
                         servis_gunluk_calisanlar[key].append(gm["doktor_id"])
             except: pass
             
-    # Aynı gün, aynı serviste çalışanları bul ve nöbette en fazla 1'ini kullan
     for key, dr_list in servis_gunluk_calisanlar.items():
         gun = key[0]
         if len(dr_list) > 1:
             model.Add(sum(nobet[(dr, gun)] for dr in dr_list) <= 1)
 
-    # Ardışık 2 Gün Dinlenme Kuralı (Kusursuz)
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
             if gun + 1 <= num_days:
@@ -219,7 +213,6 @@ def nobet_olustur(istek: YeniListeIstegi):
             if gun + 2 <= num_days:
                 model.Add(nobet[(dr, gun)] + nobet[(dr, gun+2)] <= 1)
 
-    # Geçen Aydan Devredenler (VERİTİPİ HATASI DÜZELTİLDİ)
     for oan in hastane.onceki_ay_nobetleri:
         dr_id = oan["doktor_id"]
         if dr_id in doktor_idler:
@@ -229,7 +222,6 @@ def nobet_olustur(istek: YeniListeIstegi):
             elif str(oan["gun_tipi"]) == "2":
                 model.Add(nobet[(dr_id, 1)] == 0)
 
-    # KIDEM VE ADALET KURALLARI
     asistan_yukleri = []
     
     for dr in doktor_idler:
@@ -249,18 +241,13 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.Add(nobet[(dr, gun)] == 0)
                 
         elif dr in asistan_idler:
-            # Asistan max 4 tutabilir kesin kuralı
             model.Add(dr_toplam_nobet <= 4)
-            
-            # Adalet için İş Yükü Skoru: Toplam Nöbet + Hafta Sonu Sayısı
-            # (Hafta sonu tutan asistanın skoru hızlı artar, otomatik olarak daha az toplam nöbete zorlanır)
             dr_yuk = model.NewIntVar(0, 50, f"yuk_dr_{dr}")
             model.Add(dr_yuk == dr_toplam_nobet + dr_haftasonu_nobet)
             asistan_yukleri.append(dr_yuk)
 
     ceza_puanlari = []
     
-    # İstenmeyen Kişiler Cezası
     for ist in hastane.istenmeyenler:
         dr1 = ist["doktor_id"]
         dr2 = ist["istenmeyen_doktor_id"]
@@ -270,12 +257,10 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.AddMultiplicationEquality(birlikte, [nobet[(dr1, gun)], nobet[(dr2, gun)]])
                 ceza_puanlari.append(birlikte * 100)
 
-    # Asistanları Hafta Sonundan Uzak Tutma Cezası
     for dr in asistan_idler:
         for gun in haftasonu_gunler:
             ceza_puanlari.append(nobet[(dr, gun)] * 50)
 
-    # ASİSTAN ADALETİNİ SAĞLAMA (En düşük ve en yüksek yük arasındaki farkı cezalandır)
     if len(asistan_yukleri) > 1:
         max_yuk = model.NewIntVar(0, 50, "max_yuk")
         min_yuk = model.NewIntVar(0, 50, "min_yuk")
@@ -284,10 +269,8 @@ def nobet_olustur(istek: YeniListeIstegi):
         
         fark = model.NewIntVar(0, 50, "yuk_farki")
         model.Add(fark == max_yuk - min_yuk)
-        # Bu farkı çok büyük bir sayıyla çarparak cezaya ekliyoruz ki yapay zeka eşitlemeden rahat etmesin
         ceza_puanlari.append(fark * 1000)
 
-    # Hedefimiz cezaları sıfıra yaklaştırmak
     if len(ceza_puanlari) > 0:
         model.Minimize(sum(ceza_puanlari))
 
@@ -381,13 +364,15 @@ def api_istenmeyen_guncelle(istek: GuncelleIstegi):
 
 @app.post("/api/istasyon-ekle")
 def istasyon_ekle(istek: YeniIstasyon):
-    supabase_client.table("istasyonlar").insert({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi}).execute()
+    # YENİ ALAN EKLENDİ
+    supabase_client.table("istasyonlar").insert({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, "servis_mi": istek.servis_mi}).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
 @app.put("/api/istasyon-guncelle/{id}")
 def istasyon_guncelle(id: int, istek: YeniIstasyon):
-    supabase_client.table("istasyonlar").update({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi}).eq("id", id).execute()
+    # YENİ ALAN EKLENDİ
+    supabase_client.table("istasyonlar").update({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, "servis_mi": istek.servis_mi}).eq("id", id).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
