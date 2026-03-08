@@ -149,8 +149,8 @@ def nobet_olustur(istek: YeniListeIstegi):
     aktif_doktorlar = [d for d in hastane.doktorlar if not d.get("muaf_mi", False)]
     doktor_idler = [d["id"] for d in aktif_doktorlar]
     
-    if len(doktor_idler) < 2:
-        return {"basari": False, "mesaj": "Nöbet yazmak için en az 2 aktif doktor bulunmalıdır."}
+    if len(doktor_idler) < 3:
+        return {"basari": False, "mesaj": "Hafta sonu nöbeti yazmak için en az 3 aktif doktor bulunmalıdır."}
 
     en_comez_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "EN_COMEZ"]
     comez_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "COMEZ"]
@@ -166,8 +166,14 @@ def nobet_olustur(istek: YeniListeIstegi):
         for gun in range(1, num_days + 1):
             nobet[(dr, gun)] = model.NewBoolVar(f"nobet_dr{dr}_gun{gun}")
 
+    # =========================================================
+    # YENİ: HAFTA İÇİ 2 KİŞİ, HAFTA SONU 3 KİŞİ NÖBET TUTAR
+    # =========================================================
     for gun in range(1, num_days + 1):
-        model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 2)
+        if gun in haftasonu_gunler:
+            model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 3)
+        else:
+            model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 2)
 
     for izin in hastane.izinler:
         try:
@@ -185,9 +191,6 @@ def nobet_olustur(istek: YeniListeIstegi):
                     model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
         except: pass
 
-    # =========================================================
-    # YENİ "SERVİS" KONTROLÜ (Tüm Servisler Tek Havuzda)
-    # =========================================================
     servis_istasyon_idler = [i["id"] for i in hastane.istasyonlar if i.get("servis_mi", False)]
     servis_gunluk_calisanlar = {}
     
@@ -198,17 +201,15 @@ def nobet_olustur(istek: YeniListeIstegi):
                 if tarih_obj.year == yil and tarih_obj.month == ay:
                     gun = tarih_obj.day
                     if gun not in servis_gunluk_calisanlar:
-                        servis_gunluk_calisanlar[gun] = set() # Aynı kişiyi iki kere saymamak için küme kullanıyoruz
+                        servis_gunluk_calisanlar[gun] = set()
                     if gm["doktor_id"] in doktor_idler:
                         servis_gunluk_calisanlar[gun].add(gm["doktor_id"])
             except: pass
             
-    # O gün herhangi bir serviste çalışan TÜM doktorları bul, gece nöbetine en fazla 1'ini yaz!
     for gun, dr_set in servis_gunluk_calisanlar.items():
         if len(dr_set) > 1:
             dr_list = list(dr_set)
             model.Add(sum(nobet[(dr, gun)] for dr in dr_list) <= 1)
-    # =========================================================
 
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
