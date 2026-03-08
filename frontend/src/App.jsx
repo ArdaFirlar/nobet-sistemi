@@ -41,7 +41,6 @@ function App() {
   const [duzenlenenIstId, setDuzenlenenIstId] = useState(null)
 
   const [yeniDr, setYeniDr] = useState({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false })
-  // YENİ ALAN: servis_mi state'e eklendi
   const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false, servis_mi: false })
 
   const seciliDoktorObj = doktorlar.find(d => d.id.toString() === seciliDoktor.toString());
@@ -393,16 +392,22 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
+                          {/* YENİ: HAFTA SONU RENKLENDİRMESİ BURAYA EKLENDİ */}
                           {ayGunleri.map(gun => {
                             const gunStr = `${takvimYil}-${takvimAy.toString().padStart(2, '0')}-${gun.toString().padStart(2, '0')}`;
+                            const gunIndex = new Date(takvimYil, takvimAy - 1, gun).getDay();
+                            const isWeekend = gunIndex === 0 || gunIndex === 6;
+
                             return (
-                              <tr key={gunStr}>
-                                <td style={{ fontWeight: 'bold', backgroundColor: themeStyles.tableHeader }}>{gun} {ayIsimleri[takvimAy - 1].substring(0, 3)}</td>
+                              <tr key={gunStr} style={{ backgroundColor: isWeekend ? themeStyles.highlightWeekend : 'transparent' }}>
+                                <td style={{ fontWeight: 'bold', backgroundColor: isWeekend ? themeStyles.highlightWeekend : themeStyles.tableHeader, color: isWeekend ? themeStyles.btnDanger : 'inherit' }}>
+                                  {gun} {ayIsimleri[takvimAy - 1].substring(0, 3)}
+                                </td>
                                 {istasyonlar.map(ist => {
                                   const drIds = matris[gunStr]?.[ist.id] || [];
                                   const drNames = drIds.map(id => doktorlar.find(d => d.id === id)?.isim).filter(Boolean).join(" • ");
                                   return (
-                                    <td key={ist.id} className="clickable" onClick={() => hucreTikla(gunStr, ist.id)} style={{ color: drNames ? themeStyles.btnPrimary : 'gray', fontWeight: drNames ? 'bold' : 'normal' }}>
+                                    <td key={ist.id} className="clickable" onClick={() => hucreTikla(gunStr, ist.id)} style={{ color: drNames ? themeStyles.btnPrimary : (isWeekend ? themeStyles.btnDanger : 'gray'), fontWeight: drNames ? 'bold' : 'normal', opacity: drNames ? 1 : 0.6 }}>
                                       {drNames || "+"}
                                     </td>
                                   )
@@ -445,7 +450,6 @@ function App() {
                           <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: themeStyles.btnDanger }} className="mobil-buton-tam">
                             <input type="checkbox" checked={yeniIst.nobete_engel_mi} onChange={e => setYeniIst({ ...yeniIst, nobete_engel_mi: e.target.checked })} /> Nöbete Engel?
                           </label>
-                          {/* YENİ CHECKBOX: Servis Mi? */}
                           <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#ff9800' }} className="mobil-buton-tam">
                             <input type="checkbox" checked={yeniIst.servis_mi} onChange={e => setYeniIst({ ...yeniIst, servis_mi: e.target.checked })} /> Servis mi?
                           </label>
