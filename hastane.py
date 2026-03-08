@@ -56,6 +56,7 @@ class YeniIstasyon(BaseModel):
     isim: str
     nobete_engel_mi: bool
     servis_mi: bool
+    hafta_sonu_calisir_mi: bool # YENİ EKLENEN KİMLİK
 
 class YeniDoktor(BaseModel):
     isim: str
@@ -166,9 +167,6 @@ def nobet_olustur(istek: YeniListeIstegi):
         for gun in range(1, num_days + 1):
             nobet[(dr, gun)] = model.NewBoolVar(f"nobet_dr{dr}_gun{gun}")
 
-    # =========================================================
-    # YENİ: HAFTA İÇİ 2 KİŞİ, HAFTA SONU 3 KİŞİ NÖBET TUTAR
-    # =========================================================
     for gun in range(1, num_days + 1):
         if gun in haftasonu_gunler:
             model.Add(sum(nobet[(dr, gun)] for dr in doktor_idler) == 3)
@@ -330,17 +328,33 @@ def gunduz_mesaisi_kaydet(istek: GunduzMesaisiIstegi):
 @app.post("/api/gunduz-mesaisi-toplu-kaydet")
 def gunduz_mesaisi_toplu_kaydet(istek: TopluGunduzMesaisiIstegi):
     num_days = calendar.monthrange(istek.yil, istek.ay)[1]
-    tarihler = [f"{istek.yil}-{istek.ay:02d}-{g:02d}" for g in range(1, num_days + 1)]
+    
+    # 1. İstasyonun hafta sonu çalışıp çalışmadığını öğreniyoruz
+    istasyon = next((i for i in hastane.istasyonlar if i["id"] == istek.istasyon_id), None)
+    haftasonu_calisir = istasyon.get("hafta_sonu_calisir_mi", False) if istasyon else False
 
-    for t in tarihler:
+    # 2. Önce o aya ait bu istasyondaki TÜM atamaları sıfırlıyoruz (Eskileri temizlemek için)
+    tum_tarihler = [f"{istek.yil}-{istek.ay:02d}-{g:02d}" for g in range(1, num_days + 1)]
+    for t in tum_tarihler:
         supabase_client.table("gunduz_mesaileri").delete().eq("tarih", t).eq("istasyon_id", istek.istasyon_id).execute()
 
+    # 3. Sadece uygun olan günlere atama yapıyoruz
     if istek.doktor_idler:
         eklenecekler = []
-        for t in tarihler:
+        for g in range(1, num_days + 1):
+            gun_index = datetime(istek.yil, istek.ay, g).weekday()
+            is_weekend = gun_index >= 5
+            
+            # Eğer gün hafta sonuysa VE istasyon hafta sonu çalışmıyorsa o günü ATLA!
+            if is_weekend and not haftasonu_calisir:
+                continue
+                
+            t = f"{istek.yil}-{istek.ay:02d}-{g:02d}"
             for d_id in istek.doktor_idler:
                 eklenecekler.append({"tarih": t, "istasyon_id": istek.istasyon_id, "doktor_id": d_id})
-        supabase_client.table("gunduz_mesaileri").insert(eklenecekler).execute()
+                
+        if eklenecekler:
+            supabase_client.table("gunduz_mesaileri").insert(eklenecekler).execute()
 
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
@@ -369,13 +383,23 @@ def api_istenmeyen_guncelle(istek: GuncelleIstegi):
 
 @app.post("/api/istasyon-ekle")
 def istasyon_ekle(istek: YeniIstasyon):
-    supabase_client.table("istasyonlar").insert({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, "servis_mi": istek.servis_mi}).execute()
+    supabase_client.table("istasyonlar").insert({
+        "isim": istek.isim, 
+        "nobete_engel_mi": istek.nobete_engel_mi, 
+        "servis_mi": istek.servis_mi,
+        "hafta_sonu_calisir_mi": istek.hafta_sonu_calisir_mi # YENİ ALAN
+    }).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
 @app.put("/api/istasyon-guncelle/{id}")
 def istasyon_guncelle(id: int, istek: YeniIstasyon):
-    supabase_client.table("istasyonlar").update({"isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, "servis_mi": istek.servis_mi}).eq("id", id).execute()
+    supabase_client.table("istasyonlar").update({
+        "isim": istek.isim, 
+        "nobete_engel_mi": istek.nobete_engel_mi, 
+        "servis_mi": istek.servis_mi,
+        "hafta_sonu_calisir_mi": istek.hafta_sonu_calisir_mi # YENİ ALAN
+    }).eq("id", id).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 

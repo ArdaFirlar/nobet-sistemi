@@ -41,7 +41,9 @@ function App() {
   const [duzenlenenIstId, setDuzenlenenIstId] = useState(null)
 
   const [yeniDr, setYeniDr] = useState({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false })
-  const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false, servis_mi: false })
+
+  // YENİ ALAN EKLENDİ: hafta_sonu_calisir_mi
+  const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false, servis_mi: false, hafta_sonu_calisir_mi: false })
 
   const seciliDoktorObj = doktorlar.find(d => d.id.toString() === seciliDoktor.toString());
   const isAdmin = seciliDoktorObj?.rol === 'Admin';
@@ -154,7 +156,7 @@ function App() {
   }
 
   const topluKaydet = async () => {
-    if (!window.confirm(`Seçtiğiniz doktorlar tüm ay boyunca ${seciliTopluIstasyon.isim} istasyonuna atanacak. Emin misiniz?`)) return;
+    if (!window.confirm(`Seçtiğiniz doktorlar tüm aya atanacak. Onaylıyor musunuz?`)) return;
     await fetch(`${API_URL}/gunduz-mesaisi-toplu-kaydet`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ yil: takvimYil, ay: takvimAy, istasyon_id: seciliTopluIstasyon.id, doktor_idler: seciliTopluIstasyon.seciliDoktorlar })
@@ -176,13 +178,13 @@ function App() {
     } else {
       await fetch(`${API_URL}/istasyon-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniIst) });
     }
-    setYeniIst({ isim: "", nobete_engel_mi: false, servis_mi: false });
+    setYeniIst({ isim: "", nobete_engel_mi: false, servis_mi: false, hafta_sonu_calisir_mi: false });
     temelVerileriCek();
   }
 
   const istasyonDuzenlemeyiBaslat = (ist) => {
     setDuzenlenenIstId(ist.id);
-    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi, servis_mi: ist.servis_mi || false });
+    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi, servis_mi: ist.servis_mi || false, hafta_sonu_calisir_mi: ist.hafta_sonu_calisir_mi || false });
   }
 
   const doktorKaydet = async () => {
@@ -271,7 +273,10 @@ function App() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: themeStyles.modalBg, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: themeStyles.cardBg, color: themeStyles.textMain, padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: `1px solid ${themeStyles.panelBorder}` }}>
             <h3 style={{ marginTop: 0, color: '#ff9800' }}>{seciliTopluIstasyon.isim} - Tüm Ay Atama</h3>
-            <p style={{ fontSize: '13px', opacity: 0.8, marginTop: '-10px' }}>Seçtiğiniz kişiler ayın HER GÜNÜ bu istasyona atanır.</p>
+            {/* ZEKİ UYARI MESAJI BURADA */}
+            <p style={{ fontSize: '13px', opacity: 0.8, marginTop: '-10px' }}>
+              Seçtiğiniz kişiler ayın <strong style={{ color: '#ff9800' }}>{seciliTopluIstasyon.id && istasyonlar.find(i => i.id === seciliTopluIstasyon.id)?.hafta_sonu_calisir_mi ? 'HER GÜNÜ' : 'SADECE HAFTA İÇİ GÜNLERİ'}</strong> bu istasyona atanır.
+            </p>
             <div style={{ backgroundColor: themeStyles.inputBg, maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', padding: '10px', border: `1px solid ${themeStyles.panelBorder}`, borderRadius: '8px' }}>
               {doktorlar.map(dr => (
                 <label key={dr.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', cursor: 'pointer', borderBottom: `1px solid ${themeStyles.panelBorder}`, color: themeStyles.inputText }}>
@@ -392,7 +397,6 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {/* YENİ: HAFTA SONU RENKLENDİRMESİ BURAYA EKLENDİ */}
                           {ayGunleri.map(gun => {
                             const gunStr = `${takvimYil}-${takvimAy.toString().padStart(2, '0')}-${gun.toString().padStart(2, '0')}`;
                             const gunIndex = new Date(takvimYil, takvimAy - 1, gun).getDay();
@@ -453,12 +457,16 @@ function App() {
                           <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#ff9800' }} className="mobil-buton-tam">
                             <input type="checkbox" checked={yeniIst.servis_mi} onChange={e => setYeniIst({ ...yeniIst, servis_mi: e.target.checked })} /> Servis mi?
                           </label>
+                          {/* YENİ KUTUCUK: Hafta Sonu Çalışır Mı? */}
+                          <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#2e7d32' }} className="mobil-buton-tam">
+                            <input type="checkbox" checked={yeniIst.hafta_sonu_calisir_mi} onChange={e => setYeniIst({ ...yeniIst, hafta_sonu_calisir_mi: e.target.checked })} /> H.Sonu Çalışır?
+                          </label>
                         </div>
 
                         <button onClick={istasyonKaydet} style={{ padding: '8px', backgroundColor: duzenlenenIstId ? '#ff9800' : themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} className="mobil-buton-tam">
                           {duzenlenenIstId ? 'Güncelle' : 'Ekle'}
                         </button>
-                        {duzenlenenIstId && <button onClick={() => { setDuzenlenenIstId(null); setYeniIst({ isim: "", nobete_engel_mi: false, servis_mi: false }); }} style={{ padding: '8px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>İptal</button>}
+                        {duzenlenenIstId && <button onClick={() => { setDuzenlenenIstId(null); setYeniIst({ isim: "", nobete_engel_mi: false, servis_mi: false, hafta_sonu_calisir_mi: false }); }} style={{ padding: '8px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>İptal</button>}
                       </div>
                       <ul style={{ maxHeight: '200px', overflowY: 'auto', paddingLeft: '15px', fontSize: '13px' }}>
                         {istasyonlar.map(i => (
@@ -467,6 +475,7 @@ function App() {
                               {i.isim}
                               {i.nobete_engel_mi ? <span style={{ color: 'red' }}> (Engel)</span> : ''}
                               {i.servis_mi ? <span style={{ color: '#ff9800' }}> (Servis)</span> : ''}
+                              {i.hafta_sonu_calisir_mi ? <span style={{ color: '#2e7d32' }}> (H.Sonu)</span> : ''}
                             </span>
                             <div style={{ display: 'flex', gap: '10px' }}>
                               <button onClick={() => istasyonDuzenlemeyiBaslat(i)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️ Düzenle</button>
