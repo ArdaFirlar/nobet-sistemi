@@ -237,9 +237,8 @@ function App() {
   const boslukSayisi = startDay === 0 ? 6 : startDay - 1;
   const ayIsimleri = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 
-  // YENİ: ARAYÜZDE TAVİZ/RİSK VAR MI KONTROLÜ
   const hasTaviz = nobetListesi && Object.values(nobetListesi).some(detay =>
-    detay.eksik_kisi || (detay.nobetciler_detay && detay.nobetciler_detay.some(dr => dr.riskli))
+    detay.eksik_kisi === true || (detay.nobetciler_detay && detay.nobetciler_detay.some(dr => dr.riskli === true))
   );
 
   const isDark = tema === 'dark';
@@ -606,8 +605,6 @@ function App() {
 
           {listeDurumu && <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, textAlign: 'left', whiteSpace: 'pre-wrap', fontWeight: 'bold', fontSize: '15px', lineHeight: '1.5' }}>{listeDurumu}</div>}
 
-          {uyari && isAuthedAdmin && <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '12px', marginBottom: '20px', fontWeight: 'bold', boxShadow: themeStyles.cardShadow, fontSize: '14px' }}>{uyari}</div>}
-
           {nobetListesi && (
             <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, overflowX: 'auto' }}>
               <div className="mobil-header-alan" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: `2px solid ${themeStyles.panelBorder}`, paddingBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
@@ -618,10 +615,11 @@ function App() {
                 </div>
               </div>
 
-              {/* YENİ: SADECE TAVİZ VARSA GÖRÜNEN BİLGİ KUTUSU */}
-              {hasTaviz && (
-                <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '15px', backgroundColor: themeStyles.inputBg, padding: '10px', borderRadius: '8px' }}>
-                  <strong>ℹ️ Bilgi:</strong> Tabloda <strong style={{ color: '#ff5722' }}>Turuncu Renkli ve ⚠️</strong> işaretli kısımlar, kuralların çok sıkışması sebebiyle mecburen taviz verilerek yazılmış "Servis Çakışması" olan doktorları veya "Eksik Kişiyle" tutulan tatil günlerini gösterir. Fare ile ⚠️ işaretinin üzerine gelerek nedenini görebilirsiniz.
+              {/* YENİ: BİRLEŞTİRİLMİŞ TEK BİR UYARI KUTUSU */}
+              {(hasTaviz || uyari) && isAuthedAdmin && (
+                <div style={{ fontSize: '13px', opacity: 0.9, marginBottom: '15px', backgroundColor: '#fff3cd', color: '#856404', padding: '12px', borderRadius: '8px', border: '1px solid #ffeeba' }}>
+                  <strong>⚠️ Dikkat:</strong> {uyari || "Kurallar çok sıkıştığı için algoritma bazı tavizler verdi."}<br />
+                  Tabloda <strong style={{ color: '#ff5722' }}>Turuncu Renkli</strong> veya <strong style={{ fontSize: '14px' }}>⚠️</strong> işaretli yerler bu tavizleri (Servis Çakışması, Eksik Kişi, Kota Aşımı vb.) gösterir. Fare ile üzerlerine gelerek nedeni okuyabilirsiniz.
                 </div>
               )}
 
@@ -638,7 +636,7 @@ function App() {
                     });
 
                     const isWeekend = isWeekendDay || isHoliday;
-                    const isEksik = detay.eksik_kisi; // YENİ: Backend'den gelen eksik bilgisi
+                    const isEksik = detay.eksik_kisi;
                     const hasMe = detay.nobetciler.includes(seciliDoktorObj?.isim);
 
                     let rowBg = 'transparent';
@@ -647,7 +645,6 @@ function App() {
 
                     return (
                       <tr key={tarih} style={{ backgroundColor: rowBg }}>
-                        {/* YENİ: Eksik Tatil Gününü Vurgulama */}
                         <td style={{ fontWeight: 'bold' }}>
                           {tarih} {isHoliday ? '🎉' : ''}
                           {isEksik && <span style={{ cursor: 'help', marginLeft: '5px', fontSize: '16px' }} title="Doktor yetersizliğinden mecburen 3 yerine 2 kişi atandı">⚠️</span>}
