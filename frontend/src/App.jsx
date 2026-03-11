@@ -14,7 +14,7 @@ function App() {
 
   const [doktorlar, setDoktorlar] = useState([])
   const [istasyonlar, setIstasyonlar] = useState([])
-  const [resmiTatiller, setResmiTatiller] = useState([])
+  const [resmiTatiller, setResmiTatiller] = useState([]) // YENİ STATE
 
   const [seciliDoktor, setSeciliDoktor] = useState("")
 
@@ -45,7 +45,7 @@ function App() {
   })
 
   const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false, servis_mi: false, hafta_sonu_calisir_mi: false })
-  const [yeniTatilTarihi, setYeniTatilTarihi] = useState("")
+  const [yeniTatilTarihi, setYeniTatilTarihi] = useState("") // YENİ STATE
 
   const seciliDoktorObj = doktorlar.find(d => d.id.toString() === seciliDoktor.toString());
   const isAdmin = seciliDoktorObj?.rol === 'Admin';
@@ -350,6 +350,7 @@ function App() {
               </div>
             )}
 
+            {/* İSTENMEYEN KİŞİLER MENÜSÜ TAMAMEN KALDIRILDI. SADECE İZİN TAKVİMİ VAR */}
             {seciliDoktor && (!isAdmin || sifreGirildi) && (
               <div style={{ backgroundColor: themeStyles.appBg, padding: '20px', borderRadius: '12px', border: `1px solid ${themeStyles.panelBorder}`, maxWidth: '500px' }}>
                 <h3 style={{ margin: '0 0 15px 0', color: themeStyles.btnPrimary }}>🗓️ İzin Takvimi ({ayIsimleri[takvimAy - 1]} {takvimYil})</h3>
@@ -401,6 +402,7 @@ function App() {
                             const gunIndex = new Date(takvimYil, takvimAy - 1, gun).getDay();
                             const isWeekendDay = gunIndex === 0 || gunIndex === 6;
 
+                            // YENİ: RESMİ TATİL İSE HAFTA SONU GİBİ BOYAYACAK
                             const isHoliday = resmiTatiller.some(t => {
                               if (!t.tarih) return false;
                               const [y, m, d] = t.tarih.split('T')[0].split('-');
@@ -453,6 +455,7 @@ function App() {
                 {adminTab === "veri" && (
                   <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
 
+                    {/* YENİ: RESMİ TATİL KUTUSU */}
                     <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
                       <h4 style={{ marginTop: 0 }}>🎉 Resmi Tatil Günleri</h4>
                       <p style={{ fontSize: '11px', opacity: 0.8, marginTop: '-10px' }}>Bu günler algoritma tarafından "Hafta Sonu" (3 kişi ve kota) olarak algılanır.</p>
@@ -605,17 +608,12 @@ function App() {
 
           {nobetListesi && (
             <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, overflowX: 'auto' }}>
-              <div className="mobil-header-alan" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: `2px solid ${themeStyles.panelBorder}`, paddingBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
+              <div className="mobil-header-alan" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: `2px solid ${themeStyles.panelBorder}`, paddingBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
                 <h2 style={{ margin: '0 0 5px 0', fontSize: '20px' }}>📅 {ayIsimleri[takvimAy - 1]} {takvimYil} Nöbet Tablosu</h2>
                 <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '10px' }}>
                   <a href={`whatsapp://send?text=${encodeURIComponent(paylasimMetniOlustur())}`} className="mobil-buton-tam" style={{ padding: '10px 15px', backgroundColor: '#25D366', color: 'white', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold', textAlign: 'center' }}>💬 WhatsApp</a>
                   <a href={`mailto:?subject=Aylık Nöbet Listesi&body=${encodeURIComponent(paylasimMetniOlustur())}`} className="mobil-buton-tam" style={{ padding: '10px 15px', backgroundColor: '#ea4335', color: 'white', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold', textAlign: 'center' }}>📧 E-Posta</a>
                 </div>
-              </div>
-
-              {/* YENİ: KULLANICI BİLGİLENDİRME PANELİ */}
-              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '15px', backgroundColor: themeStyles.inputBg, padding: '10px', borderRadius: '8px' }}>
-                <strong>ℹ️ Bilgi:</strong> Tabloda <strong style={{ color: '#ff5722' }}>Turuncu Renkli ve ⚠️</strong> işaretli isimler, kuralların çok sıkışması sebebiyle mecburen taviz verilerek yazılmış "Servis Çakışması" olan doktorları gösterir. Fare ile ismin üzerine gelerek nedenini görebilirsiniz.
               </div>
 
               <table className="excel-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '14px' }}>
@@ -636,25 +634,11 @@ function App() {
                     let rowBg = 'transparent';
                     if (hasMe) rowBg = themeStyles.highlightMe;
                     else if (isWeekend) rowBg = themeStyles.highlightWeekend;
-
                     return (
                       <tr key={tarih} style={{ backgroundColor: rowBg }}>
                         <td style={{ fontWeight: 'bold' }}>{tarih} {isHoliday ? '🎉' : ''}</td>
                         <td style={{ fontWeight: isWeekend ? 'bold' : 'normal', color: isWeekend ? themeStyles.btnDanger : 'inherit' }}>{detay.gun_adi}</td>
-                        <td style={{ fontWeight: hasMe ? 'bold' : 'normal' }}>
-                          {/* YENİ: RİSKLİ (TAVİZ VERİLEN) DOKTORLARI RENKLENDİRME */}
-                          {detay.nobetciler_detay ? detay.nobetciler_detay.map((dr, idx) => (
-                            <span key={idx} style={{
-                              color: dr.riskli ? '#ff5722' : (dr.isim === seciliDoktorObj?.isim ? '#2e7d32' : 'inherit'),
-                              fontWeight: dr.riskli || dr.isim === seciliDoktorObj?.isim ? 'bold' : 'normal',
-                              textDecoration: dr.riskli ? 'underline' : 'none',
-                              cursor: dr.riskli ? 'help' : 'default'
-                            }} title={dr.sebep}>
-                              {dr.isim} {dr.riskli && <span style={{ fontSize: '12px' }}>⚠️</span>}
-                              {idx < detay.nobetciler_detay.length - 1 ? ' • ' : ''}
-                            </span>
-                          )) : detay.nobetciler.join(' • ')}
-                        </td>
+                        <td style={{ fontWeight: hasMe ? 'bold' : 'normal', color: hasMe ? '#2e7d32' : 'inherit' }}>{detay.nobetciler.join(' • ')}</td>
                       </tr>
                     )
                   })}
