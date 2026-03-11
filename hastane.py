@@ -58,7 +58,6 @@ class YeniIstasyon(BaseModel):
     servis_mi: bool
     hafta_sonu_calisir_mi: bool
 
-# YENİ DOKTOR MODELİ (Kurallar Eklendi)
 class YeniDoktor(BaseModel):
     isim: str
     kidem: str
@@ -158,6 +157,8 @@ def nobet_olustur(istek: YeniListeIstegi):
     if len(doktor_idler) < 3:
         return {"basari": False, "mesaj": "Hafta sonu nöbeti yazmak için en az 3 aktif doktor bulunmalıdır."}
 
+    asistan_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "ASISTAN"]
+
     haftasonu_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() >= 5]
     persembe_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() == 3]
 
@@ -190,24 +191,40 @@ def nobet_olustur(istek: YeniListeIstegi):
                     model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
         except: pass
 
-    servis_istasyon_idler = [i["id"] for i in hastane.istasyonlar if i.get("servis_mi", False)]
+    # =========================================================
+    # DÜZELTİLMİŞ "SERVİS" KONTROLÜ (Tüm Servisler Tek Havuzda)
+    # =========================================================
+    # Herhangi bir string/int veya datetime uyuşmazlığına karşı çelik gibi koruma:
+    servis_istasyon_idler = []
+    for i in hastane.istasyonlar:
+        val = i.get("servis_mi")
+        # Supabase'in true, "true", 1 vb. gönderme ihtimallerini süzüyoruz
+        if val is True or str(val).lower() == "true" or val == 1 or str(val) == "1":
+            servis_istasyon_idler.append(int(i["id"]))
+            
     servis_gunluk_calisanlar = {}
     for gm in hastane.gunduz_mesaileri:
-        if gm["istasyon_id"] in servis_istasyon_idler:
-            try:
-                tarih_obj = datetime.strptime(gm["tarih"], "%Y-%m-%d")
-                if tarih_obj.year == yil and tarih_obj.month == ay:
-                    gun = tarih_obj.day
-                    if gun not in servis_gunluk_calisanlar:
-                        servis_gunluk_calisanlar[gun] = set()
-                    if gm["doktor_id"] in doktor_idler:
-                        servis_gunluk_calisanlar[gun].add(gm["doktor_id"])
-            except: pass
+        try:
+            gm_ist_id = int(gm["istasyon_id"])
+            if gm_ist_id in servis_istasyon_idler:
+                # Tarih formatı patlamalarına karşı güvenli ayrıştırma ("2026-03-15" vb.)
+                tarih_str = str(gm["tarih"]).split("T")[0] 
+                yil_gm, ay_gm, gun_gm = map(int, tarih_str.split("-"))
+                
+                if yil_gm == yil and ay_gm == ay:
+                    if gun_gm not in servis_gunluk_calisanlar:
+                        servis_gunluk_calisanlar[gun_gm] = set()
+                    dr_id = int(gm["doktor_id"])
+                    if dr_id in doktor_idler:
+                        servis_gunluk_calisanlar[gun_gm].add(dr_id)
+        except Exception as e:
+            pass
             
-    for gun, dr_set in servis_gunluk_calisanlar.items():
+    # O gün herhangi bir serviste çalışan TÜM doktorları tek bir listede topla ve max 1'ini gece nöbetine yaz!
+    for gun_gm, dr_set in servis_gunluk_calisanlar.items():
         if len(dr_set) > 1:
             dr_list = list(dr_set)
-            model.Add(sum(nobet[(dr, gun)] for dr in dr_list) <= 1)
+            model.Add(sum(nobet[(dr, gun_gm)] for dr in dr_list) <= 1)
 
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
@@ -226,7 +243,7 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.Add(nobet[(dr_id, 1)] == 0)
 
     # =========================================================
-    # YENİ NESİL DİNAMİK KURAL VE ADALET MOTORU
+    # DİNAMİK KURAL VE ADALET MOTORU
     # =========================================================
     esnek_dr_yukleri = []
     ceza_puanlari = []
@@ -242,29 +259,39 @@ def nobet_olustur(istek: YeniListeIstegi):
         dr_toplam_nobet = sum(nobet[(dr, gun)] for gun in range(1, num_days + 1))
         dr_haftasonu_nobet = sum(nobet[(dr, gun)] for gun in haftasonu_gunler)
         
-        # Perşembe Yasağı Varsa
         if p_yasak:
             for gun in persembe_gunler:
                 model.Add(nobet[(dr, gun)] == 0)
                 
-        # Kesin (TAM) Kural
         if k_tipi == "TAM":
             model.Add(dr_toplam_nobet == n_hedef)
             model.Add(dr_haftasonu_nobet == h_hedef)
             
-        # Maksimum/Esnek (MAX) Kural
         elif k_tipi == "MAX":
             model.Add(dr_toplam_nobet <= n_hedef)
             model.Add(dr_haftasonu_nobet <= h_hedef)
             
-            # Adalet Puanı Hesaplama (Sadece MAX olanlar boşlukları doldurur, o yüzden iş yüklerini eşitliyoruz)
             dr_yuk = model.NewIntVar(0, 50, f"yuk_dr_{dr}")
             model.Add(dr_yuk == dr_toplam_nobet + dr_haftasonu_nobet)
             esnek_dr_yukleri.append(dr_yuk)
             
-            # MAX doktorları hafta sonundan uzak tutmak için hafif ceza
             for gun in haftasonu_gunler:
                 ceza_puanlari.append(nobet[(dr, gun)] * 50)
+
+    # =========================================================
+    # YENİ: PERŞEMBE GÜNÜ ADALETİ (Kıdemli Önceliği)
+    # =========================================================
+    for dr in asistan_idler:
+        dr_persembe_toplam = sum(nobet[(dr, gun)] for gun in persembe_gunler)
+        
+        # 1. Asistan Perşembeye yazılmasın diye ceza (Öncelik Kıdemlilere kayar)
+        for gun in persembe_gunler:
+            ceza_puanlari.append(nobet[(dr, gun)] * 10)
+        
+        # 2. Aynı asistana mecbur kalınıp da 1'den fazla perşembe yazılırsa devasa ceza (Eşit Dağıtım)
+        fazla_persembe = model.NewIntVar(0, 5, f"fazla_persembe_{dr}")
+        model.Add(fazla_persembe >= dr_persembe_toplam - 1)
+        ceza_puanlari.append(fazla_persembe * 500)
 
     # İstenmeyen Kişiler
     for ist in hastane.istenmeyenler:
@@ -276,7 +303,7 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.AddMultiplicationEquality(birlikte, [nobet[(dr1, gun)], nobet[(dr2, gun)]])
                 ceza_puanlari.append(birlikte * 100)
 
-    # Esnek (MAX) Doktorlar Arası Uçurum Engelleme (Adalet Terazisi)
+    # Esnek (MAX) Doktorlar Arası Adalet Terazisi
     if len(esnek_dr_yukleri) > 1:
         max_yuk = model.NewIntVar(0, 50, "max_yuk")
         min_yuk = model.NewIntVar(0, 50, "min_yuk")
