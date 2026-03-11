@@ -14,6 +14,8 @@ function App() {
 
   const [doktorlar, setDoktorlar] = useState([])
   const [istasyonlar, setIstasyonlar] = useState([])
+  const [resmiTatiller, setResmiTatiller] = useState([]) // YENİ STATE
+
   const [seciliDoktor, setSeciliDoktor] = useState("")
 
   const [sifreGirildi, setSifreGirildi] = useState(false)
@@ -21,9 +23,6 @@ function App() {
 
   const [seciliTarihler, setSeciliTarihler] = useState([])
   const [izinMesaj, setIzinMesaj] = useState(null)
-
-  const [seciliIstenmeyenler, setSeciliIstenmeyenler] = useState([])
-  const [kuralMesaj, setKuralMesaj] = useState(null)
 
   const [adminTab, setAdminTab] = useState("mesai")
   const [matris, setMatris] = useState({})
@@ -46,6 +45,7 @@ function App() {
   })
 
   const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false, servis_mi: false, hafta_sonu_calisir_mi: false })
+  const [yeniTatilTarihi, setYeniTatilTarihi] = useState("") // YENİ STATE
 
   const seciliDoktorObj = doktorlar.find(d => d.id.toString() === seciliDoktor.toString());
   const isAdmin = seciliDoktorObj?.rol === 'Admin';
@@ -58,6 +58,7 @@ function App() {
   const temelVerileriCek = () => {
     fetch(`${API_URL}/doktorlar`).then(res => res.json()).then(d => { if (d.basari) setDoktorlar(d.data) })
     fetch(`${API_URL}/istasyonlar`).then(res => res.json()).then(d => { if (d.basari) setIstasyonlar(d.data) })
+    fetch(`${API_URL}/resmi-tatiller`).then(res => res.json()).then(d => { if (d.basari) setResmiTatiller(d.data) })
   }
 
   useEffect(() => {
@@ -66,15 +67,15 @@ function App() {
   }, [takvimAy, takvimYil, isAuthedAdmin])
 
   useEffect(() => {
-    setIzinMesaj(null); setKuralMesaj(null); setListeDurumu(null); setSifreGirildi(false); setSifreDeneme("");
+    setIzinMesaj(null); setListeDurumu(null); setSifreGirildi(false); setSifreDeneme("");
     if (seciliDoktor) {
       fetch(`${API_URL}/doktor-detay/${seciliDoktor}`)
         .then(res => res.json()).then(data => {
-          if (data.basari) { setSeciliTarihler(data.izinler); setSeciliIstenmeyenler(data.istenmeyenler); }
+          if (data.basari) { setSeciliTarihler(data.izinler); }
         });
       mevcutListeyiGetir();
     } else {
-      setSeciliTarihler([]); setSeciliIstenmeyenler([]); setNobetListesi(null);
+      setSeciliTarihler([]); setNobetListesi(null);
     }
   }, [seciliDoktor])
 
@@ -110,7 +111,6 @@ function App() {
         mevcutListeyiGetir();
       }
       else {
-        // YENİ: Teşhis Raporunu doğrudan Backend'den okuyoruz
         setListeDurumu(result.mesaj || "❌ Kurallar çok sıkı, mevcut doktorlarla liste oluşturulamadı.");
       }
     } catch (err) { setListeDurumu("Sunucu bağlantı hatası."); }
@@ -216,6 +216,13 @@ function App() {
     });
   }
 
+  const tatilKaydet = async () => {
+    if (!yeniTatilTarihi) return;
+    await fetch(`${API_URL}/resmi-tatil-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tarih: yeniTatilTarihi }) });
+    setYeniTatilTarihi("");
+    temelVerileriCek();
+  }
+
   const paylasimMetniOlustur = () => {
     if (!nobetListesi) return "";
     let metin = `🏥 ${ayIsimleri[takvimAy - 1]} ${takvimYil} Nöbet Listesi\n\n`;
@@ -229,8 +236,6 @@ function App() {
   const startDay = new Date(takvimYil, takvimAy - 1, 1).getDay();
   const boslukSayisi = startDay === 0 ? 6 : startDay - 1;
   const ayIsimleri = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
-
-  const digerDoktorlar = doktorlar.filter(dr => dr.id.toString() !== seciliDoktor.toString());
 
   const isDark = tema === 'dark';
   const themeStyles = {
@@ -345,38 +350,21 @@ function App() {
               </div>
             )}
 
+            {/* İSTENMEYEN KİŞİLER MENÜSÜ TAMAMEN KALDIRILDI. SADECE İZİN TAKVİMİ VAR */}
             {seciliDoktor && (!isAdmin || sifreGirildi) && (
-              <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                <div style={{ backgroundColor: themeStyles.appBg, padding: '20px', borderRadius: '12px', border: `1px solid ${themeStyles.panelBorder}` }}>
-                  <h3 style={{ margin: '0 0 15px 0', color: themeStyles.btnPrimary }}>🗓️ İzin Takvimi ({ayIsimleri[takvimAy - 1]} {takvimYil})</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', marginBottom: '15px' }}>
-                    {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map(g => <div key={g} style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', opacity: 0.7 }}>{g}</div>)}
-                    {Array(boslukSayisi).fill(null).map((_, i) => <div key={`bos-${i}`} />)}
-                    {ayGunleri.map(gun => {
-                      const gunStr = `${takvimYil}-${takvimAy.toString().padStart(2, '0')}-${gun.toString().padStart(2, '0')}`;
-                      const isSelected = seciliTarihler.includes(gunStr);
-                      return <div key={gun} onClick={() => { setIzinMesaj(null); setSeciliTarihler(prev => prev.includes(gunStr) ? prev.filter(t => t !== gunStr) : [...prev, gunStr]); }} style={{ aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', backgroundColor: isSelected ? themeStyles.calendarSelected : themeStyles.inputBg, color: isSelected ? 'white' : themeStyles.inputText, border: `1px solid ${isSelected ? themeStyles.calendarSelected : themeStyles.panelBorder}` }}>{gun}</div>
-                    })}
-                  </div>
-                  <button onClick={async () => { const res = await fetch(`${API_URL}/izin-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doktor_id: parseInt(seciliDoktor), tarihler: seciliTarihler }) }); const data = await res.json(); setIzinMesaj(data.basari ? `✅ ${data.mesaj}` : `❌ ${data.mesaj}`); }} style={{ width: '100%', padding: '12px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kaydet</button>
-                  {izinMesaj && <div style={{ marginTop: '10px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px' }}>{izinMesaj}</div>}
+              <div style={{ backgroundColor: themeStyles.appBg, padding: '20px', borderRadius: '12px', border: `1px solid ${themeStyles.panelBorder}`, maxWidth: '500px' }}>
+                <h3 style={{ margin: '0 0 15px 0', color: themeStyles.btnPrimary }}>🗓️ İzin Takvimi ({ayIsimleri[takvimAy - 1]} {takvimYil})</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', marginBottom: '15px' }}>
+                  {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map(g => <div key={g} style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', opacity: 0.7 }}>{g}</div>)}
+                  {Array(boslukSayisi).fill(null).map((_, i) => <div key={`bos-${i}`} />)}
+                  {ayGunleri.map(gun => {
+                    const gunStr = `${takvimYil}-${takvimAy.toString().padStart(2, '0')}-${gun.toString().padStart(2, '0')}`;
+                    const isSelected = seciliTarihler.includes(gunStr);
+                    return <div key={gun} onClick={() => { setIzinMesaj(null); setSeciliTarihler(prev => prev.includes(gunStr) ? prev.filter(t => t !== gunStr) : [...prev, gunStr]); }} style={{ aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', backgroundColor: isSelected ? themeStyles.calendarSelected : themeStyles.inputBg, color: isSelected ? 'white' : themeStyles.inputText, border: `1px solid ${isSelected ? themeStyles.calendarSelected : themeStyles.panelBorder}` }}>{gun}</div>
+                  })}
                 </div>
-
-                <div style={{ backgroundColor: themeStyles.appBg, padding: '20px', borderRadius: '12px', border: `1px solid ${themeStyles.panelBorder}`, display: 'flex', flexDirection: 'column' }}>
-                  <h3 style={{ margin: '0 0 10px 0', color: themeStyles.btnDanger }}>🚫 Nöbet Tutmak İstemediğim Kişiler</h3>
-                  <p style={{ fontSize: '13px', margin: '0 0 10px 0', color: themeStyles.btnDanger, fontWeight: 'bold' }}>* Ancak yeterli doktor bulunmadığı durumlarda sistem tıkanmamak için size birlikte nöbet yazabilir!</p>
-
-                  <div style={{ flex: 1, overflowY: 'auto', maxHeight: '200px', border: `1px solid ${themeStyles.panelBorder}`, borderRadius: '8px', backgroundColor: themeStyles.inputBg, padding: '10px', marginBottom: '15px' }}>
-                    {digerDoktorlar.map(dr => (
-                      <label key={dr.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', cursor: 'pointer', borderBottom: `1px solid ${themeStyles.panelBorder}`, color: themeStyles.inputText }}>
-                        <input type="checkbox" checked={seciliIstenmeyenler.includes(dr.id)} onChange={() => { setKuralMesaj(null); setSeciliIstenmeyenler(prev => prev.includes(dr.id) ? prev.filter(id => id !== dr.id) : [...prev, dr.id]); }} style={{ width: '18px', height: '18px' }} />
-                        <span style={{ fontSize: '15px' }}>{dr.isim}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <button onClick={async () => { const res = await fetch(`${API_URL}/istenmeyen-guncelle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doktor_id: parseInt(seciliDoktor), idler: seciliIstenmeyenler }) }); const data = await res.json(); setKuralMesaj(data.basari ? `✅ ${data.mesaj}` : `❌ ${data.mesaj}`); }} style={{ padding: '12px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', width: '100%' }}>Kaydet</button>
-                  {kuralMesaj && <div style={{ marginTop: '10px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px' }}>{kuralMesaj}</div>}
-                </div>
+                <button onClick={async () => { const res = await fetch(`${API_URL}/izin-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doktor_id: parseInt(seciliDoktor), tarihler: seciliTarihler }) }); const data = await res.json(); setIzinMesaj(data.basari ? `✅ ${data.mesaj}` : `❌ ${data.mesaj}`); }} style={{ width: '100%', padding: '12px', backgroundColor: themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>İzinleri Kaydet</button>
+                {izinMesaj && <div style={{ marginTop: '10px', textAlign: 'center', fontWeight: 'bold', fontSize: '14px' }}>{izinMesaj}</div>}
               </div>
             )}
           </div>
@@ -387,7 +375,7 @@ function App() {
 
               <div style={{ display: 'flex', borderBottom: `1px solid ${themeStyles.panelBorder}`, backgroundColor: themeStyles.tabBg }}>
                 <button onClick={() => setAdminTab("mesai")} style={{ flex: 1, padding: '12px 10px', border: 'none', backgroundColor: adminTab === "mesai" ? themeStyles.cardBg : 'transparent', color: adminTab === "mesai" ? themeStyles.tabActive : themeStyles.textMain, fontWeight: 'bold', cursor: 'pointer', borderTop: adminTab === "mesai" ? `3px solid ${themeStyles.tabActive}` : '3px solid transparent', fontSize: '14px' }}>Gündüz Mesaisi</button>
-                <button onClick={() => setAdminTab("veri")} style={{ flex: 1, padding: '12px 10px', border: 'none', backgroundColor: adminTab === "veri" ? themeStyles.cardBg : 'transparent', color: adminTab === "veri" ? themeStyles.tabActive : themeStyles.textMain, fontWeight: 'bold', cursor: 'pointer', borderTop: adminTab === "veri" ? `3px solid ${themeStyles.tabActive}` : '3px solid transparent', fontSize: '14px' }}>İstasyon & Doktor</button>
+                <button onClick={() => setAdminTab("veri")} style={{ flex: 1, padding: '12px 10px', border: 'none', backgroundColor: adminTab === "veri" ? themeStyles.cardBg : 'transparent', color: adminTab === "veri" ? themeStyles.tabActive : themeStyles.textMain, fontWeight: 'bold', cursor: 'pointer', borderTop: adminTab === "veri" ? `3px solid ${themeStyles.tabActive}` : '3px solid transparent', fontSize: '14px' }}>Sistem Verileri</button>
               </div>
 
               <div style={{ padding: '20px' }}>
@@ -412,12 +400,21 @@ function App() {
                           {ayGunleri.map(gun => {
                             const gunStr = `${takvimYil}-${takvimAy.toString().padStart(2, '0')}-${gun.toString().padStart(2, '0')}`;
                             const gunIndex = new Date(takvimYil, takvimAy - 1, gun).getDay();
-                            const isWeekend = gunIndex === 0 || gunIndex === 6;
+                            const isWeekendDay = gunIndex === 0 || gunIndex === 6;
+
+                            // YENİ: RESMİ TATİL İSE HAFTA SONU GİBİ BOYAYACAK
+                            const isHoliday = resmiTatiller.some(t => {
+                              if (!t.tarih) return false;
+                              const [y, m, d] = t.tarih.split('T')[0].split('-');
+                              return parseInt(y) === takvimYil && parseInt(m) === takvimAy && parseInt(d) === gun;
+                            });
+
+                            const isWeekend = isWeekendDay || isHoliday;
 
                             return (
                               <tr key={gunStr} style={{ backgroundColor: isWeekend ? themeStyles.highlightWeekend : 'transparent' }}>
                                 <td style={{ fontWeight: 'bold', backgroundColor: isWeekend ? themeStyles.highlightWeekend : themeStyles.tableHeader, color: isWeekend ? themeStyles.btnDanger : 'inherit' }}>
-                                  {gun} {ayIsimleri[takvimAy - 1].substring(0, 3)}
+                                  {gun} {ayIsimleri[takvimAy - 1].substring(0, 3)} {isHoliday ? '🎉' : ''}
                                 </td>
                                 {istasyonlar.map(ist => {
                                   const drIds = matris[gunStr]?.[ist.id] || [];
@@ -457,6 +454,27 @@ function App() {
 
                 {adminTab === "veri" && (
                   <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+
+                    {/* YENİ: RESMİ TATİL KUTUSU */}
+                    <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
+                      <h4 style={{ marginTop: 0 }}>🎉 Resmi Tatil Günleri</h4>
+                      <p style={{ fontSize: '11px', opacity: 0.8, marginTop: '-10px' }}>Bu günler algoritma tarafından "Hafta Sonu" (3 kişi ve kota) olarak algılanır.</p>
+                      <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
+                        <input type="date" value={yeniTatilTarihi} onChange={e => setYeniTatilTarihi(e.target.value)} style={{ padding: '8px', flex: 1, backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} className="mobil-buton-tam" />
+                        <button onClick={tatilKaydet} style={{ padding: '8px', backgroundColor: '#e91e63', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} className="mobil-buton-tam">
+                          Tatil Ekle
+                        </button>
+                      </div>
+                      <ul style={{ maxHeight: '150px', overflowY: 'auto', paddingLeft: '15px', fontSize: '13px' }}>
+                        {resmiTatiller.map(t => (
+                          <li key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${themeStyles.panelBorder}` }}>
+                            <span style={{ fontWeight: 'bold' }}>{t.tarih.split("T")[0]}</span>
+                            <button onClick={() => veriSil('resmi_tatiller', t.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️ Sil</button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
                     <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
                       <h4 style={{ marginTop: 0 }}>{duzenlenenIstId ? 'İstasyonu Düzenle' : 'Yeni İstasyon Ekle'}</h4>
                       <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
@@ -489,8 +507,8 @@ function App() {
                               {i.hafta_sonu_calisir_mi ? <span style={{ color: '#2e7d32' }}> (H.Sonu)</span> : ''}
                             </span>
                             <div style={{ display: 'flex', gap: '10px' }}>
-                              <button onClick={() => istasyonDuzenlemeyiBaslat(i)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️ Düzenle</button>
-                              <button onClick={() => veriSil('istasyonlar', i.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️ Sil</button>
+                              <button onClick={() => istasyonDuzenlemeyiBaslat(i)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️</button>
+                              <button onClick={() => veriSil('istasyonlar', i.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️</button>
                             </div>
                           </li>
                         ))}
@@ -584,7 +602,6 @@ function App() {
             </div>
           )}
 
-          {/* YENİ: Hata metinlerinin alt alta ve düzenli görünmesi için 'whiteSpace: pre-wrap' ve 'textAlign: left' eklendi */}
           {listeDurumu && <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, textAlign: 'left', whiteSpace: 'pre-wrap', fontWeight: 'bold', fontSize: '15px', lineHeight: '1.5' }}>{listeDurumu}</div>}
 
           {uyari && isAuthedAdmin && <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '12px', marginBottom: '20px', fontWeight: 'bold', boxShadow: themeStyles.cardShadow, fontSize: '14px' }}>{uyari}</div>}
@@ -592,7 +609,7 @@ function App() {
           {nobetListesi && (
             <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, overflowX: 'auto' }}>
               <div className="mobil-header-alan" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: `2px solid ${themeStyles.panelBorder}`, paddingBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
-                <h2 style={{ margin: 0, fontSize: '20px' }}>📅 {ayIsimleri[takvimAy - 1]} {takvimYil} Nöbet Tablosu</h2>
+                <h2 style={{ margin: '0 0 5px 0', fontSize: '20px' }}>📅 {ayIsimleri[takvimAy - 1]} {takvimYil} Nöbet Tablosu</h2>
                 <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '10px' }}>
                   <a href={`whatsapp://send?text=${encodeURIComponent(paylasimMetniOlustur())}`} className="mobil-buton-tam" style={{ padding: '10px 15px', backgroundColor: '#25D366', color: 'white', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold', textAlign: 'center' }}>💬 WhatsApp</a>
                   <a href={`mailto:?subject=Aylık Nöbet Listesi&body=${encodeURIComponent(paylasimMetniOlustur())}`} className="mobil-buton-tam" style={{ padding: '10px 15px', backgroundColor: '#ea4335', color: 'white', textDecoration: 'none', borderRadius: '8px', fontWeight: 'bold', textAlign: 'center' }}>📧 E-Posta</a>
@@ -603,14 +620,23 @@ function App() {
                 <thead><tr style={{ backgroundColor: themeStyles.tableHeader }}><th>Tarih</th><th>Gün</th><th>Nöbetçi Doktorlar</th></tr></thead>
                 <tbody>
                   {Object.entries(nobetListesi).map(([tarih, detay]) => {
-                    const isWeekend = ['Cmt', 'Paz'].includes(detay.gun_adi);
+                    const gunIndex = new Date(tarih).getDay();
+                    const isWeekendDay = gunIndex === 0 || gunIndex === 6;
+
+                    const isHoliday = resmiTatiller.some(t => {
+                      if (!t.tarih) return false;
+                      return t.tarih.split("T")[0] === tarih;
+                    });
+
+                    const isWeekend = isWeekendDay || isHoliday;
                     const hasMe = detay.nobetciler.includes(seciliDoktorObj?.isim);
+
                     let rowBg = 'transparent';
                     if (hasMe) rowBg = themeStyles.highlightMe;
                     else if (isWeekend) rowBg = themeStyles.highlightWeekend;
                     return (
                       <tr key={tarih} style={{ backgroundColor: rowBg }}>
-                        <td style={{ fontWeight: 'bold' }}>{tarih}</td>
+                        <td style={{ fontWeight: 'bold' }}>{tarih} {isHoliday ? '🎉' : ''}</td>
                         <td style={{ fontWeight: isWeekend ? 'bold' : 'normal', color: isWeekend ? themeStyles.btnDanger : 'inherit' }}>{detay.gun_adi}</td>
                         <td style={{ fontWeight: hasMe ? 'bold' : 'normal', color: hasMe ? '#2e7d32' : 'inherit' }}>{detay.nobetciler.join(' • ')}</td>
                       </tr>

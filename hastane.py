@@ -72,6 +72,10 @@ class OncekiAyDevir(BaseModel):
     doktor_id: int
     gun_tipi: str
 
+# YENİ TATİL MODELİ
+class YeniTatil(BaseModel):
+    tarih: str
+
 class HastaneSistemi:
     def __init__(self):
         self.doktorlar = []
@@ -80,6 +84,7 @@ class HastaneSistemi:
         self.istenmeyenler = []
         self.gunduz_mesaileri = []
         self.onceki_ay_nobetleri = []
+        self.resmi_tatiller = [] # YENİ LİSTE
 
     def veritabanindan_yukle(self, db: Client):
         self.doktorlar = db.table("doktorlar").select("*").execute().data
@@ -88,6 +93,12 @@ class HastaneSistemi:
         self.istenmeyenler = db.table("istenmeyen_kisiler").select("*").execute().data
         self.gunduz_mesaileri = db.table("gunduz_mesaileri").select("*").execute().data
         self.onceki_ay_nobetleri = db.table("onceki_ay_nobetleri").select("*").execute().data
+        
+        # YENİ TABLOYU ÇEK
+        try:
+            self.resmi_tatiller = db.table("resmi_tatiller").select("*").execute().data
+        except Exception:
+            self.resmi_tatiller = []
 
 hastane = HastaneSistemi()
 hastane.veritabanindan_yukle(supabase_client)
@@ -104,15 +115,17 @@ def get_istasyonlar():
     sirali_istasyonlar = sorted(hastane.istasyonlar, key=lambda x: x["isim"])
     return {"basari": True, "data": sirali_istasyonlar}
 
+# YENİ UÇ NOKTA: RESMİ TATİLLER
+@app.get("/api/resmi-tatiller")
+def get_resmi_tatiller():
+    return {"basari": True, "data": hastane.resmi_tatiller}
+
 @app.get("/api/doktor-detay/{doktor_id}")
 def get_doktor_detay(doktor_id: int):
     izin_sonuc = supabase_client.table("izinli_gunler").select("tarih").eq("doktor_id", doktor_id).execute()
-    istenmeyen_sonuc = supabase_client.table("istenmeyen_kisiler").select("istenmeyen_doktor_id").eq("doktor_id", doktor_id).execute()
-    
     doktor_izinleri = [iz["tarih"] for iz in izin_sonuc.data] if izin_sonuc.data else []
-    doktor_istenmeyenler = [ist["istenmeyen_doktor_id"] for ist in istenmeyen_sonuc.data] if istenmeyen_sonuc.data else []
-    
-    return {"basari": True, "izinler": doktor_izinleri, "istenmeyenler": doktor_istenmeyenler}
+    # İstenmeyenler backend'de kaldı ama arayüze göndermemize gerek yok
+    return {"basari": True, "izinler": doktor_izinleri}
 
 @app.get("/api/mevcut-liste")
 def get_mevcut_liste(yil: int, ay: int):
@@ -159,7 +172,18 @@ def nobet_olustur(istek: YeniListeIstegi):
 
     asistan_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "ASISTAN"]
 
+    # =========================================================
+    # YENİ: RESMİ TATİLLERİ HAFTA SONU LİSTESİNE ENJEKTE ETME
+    # =========================================================
     haftasonu_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() >= 5]
+    for tatil in hastane.resmi_tatiller:
+        try:
+            tarih_str = str(tatil["tarih"]).split("T")[0]
+            t_y, t_a, t_g = map(int, tarih_str.split("-"))
+            if t_y == yil and t_a == ay and t_g not in haftasonu_gunler:
+                haftasonu_gunler.append(t_g)
+        except Exception: pass
+    
     persembe_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() == 3]
 
     model = cp_model.CpModel()
@@ -177,30 +201,36 @@ def nobet_olustur(istek: YeniListeIstegi):
 
     for izin in hastane.izinler:
         try:
-            iz_tarih = datetime.strptime(iz["tarih"].split("T")[0], "%Y-%m-%d")
-            if iz_tarih.year == yil and iz_tarih.month == ay and izin["doktor_id"] in doktor_idler:
-                model.Add(nobet[(izin["doktor_id"], iz_tarih.day)] == 0)
-        except: pass
+            tarih_str = str(izin["tarih"]).split("T")[0]
+            iz_y, iz_a, iz_g = map(int, tarih_str.split("-"))
+            d_id = int(izin["doktor_id"])
+            if iz_y == yil and iz_a == ay and d_id in doktor_idler:
+                model.Add(nobet[(d_id, iz_g)] == 0)
+        except Exception: pass
 
-    engel_istasyonlar = [i["id"] for i in hastane.istasyonlar if i.get("nobete_engel_mi", False)]
+    engel_istasyonlar = []
+    for i in hastane.istasyonlar:
+        val = i.get("nobete_engel_mi")
+        if val is True or str(val).lower() == "true" or val == 1 or str(val) == "1":
+            engel_istasyonlar.append(int(i["id"]))
+            
     for gm in hastane.gunduz_mesaileri:
         try:
-            gm_tarih = datetime.strptime(gm["tarih"].split("T")[0], "%Y-%m-%d")
-            if gm_tarih.year == yil and gm_tarih.month == ay and gm["doktor_id"] in doktor_idler:
-                if gm["istasyon_id"] in engel_istasyonlar:
-                    model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
-        except: pass
+            tarih_str = str(gm["tarih"]).split("T")[0]
+            gm_y, gm_a, gm_g = map(int, tarih_str.split("-"))
+            d_id = int(gm["doktor_id"])
+            ist_id = int(gm["istasyon_id"])
+            if gm_y == yil and gm_a == ay and d_id in doktor_idler:
+                if ist_id in engel_istasyonlar:
+                    model.Add(nobet[(d_id, gm_g)] == 0)
+        except Exception: pass
 
-    # =========================================================
-    # DÜZELTME: SADECE "SERVİS" İSTASYONLARINI HAVUZA ALMA
-    # =========================================================
     servis_istasyon_idler = []
     for i in hastane.istasyonlar:
         val = i.get("servis_mi")
         if val is True or str(val).lower() == "true" or val == 1 or str(val) == "1":
             servis_istasyon_idler.append(int(i["id"]))
 
-    # KURAL 1: Ertesi Gün Hasar Kontrolü (SADECE SERVİSLER İÇİN)
     ertesi_gun_servis_calisanlar = {}
     for gm in hastane.gunduz_mesaileri:
         try:
@@ -221,17 +251,12 @@ def nobet_olustur(istek: YeniListeIstegi):
         if ertesi_gun in ertesi_gun_servis_calisanlar:
             yarin_servistekiler = list(ertesi_gun_servis_calisanlar[ertesi_gun])
             if len(yarin_servistekiler) > 1:
-                # Ertesi gün serviste çalışacak ekipten bu geceye max 1 kişi yazabilirsin
                 model.Add(sum(nobet[(dr, gun)] for dr in yarin_servistekiler) <= 1)
 
-    # KURAL 2: Aynı Gün Servis Kontrolü (Aynı serviste çalışanlar aynı gün nöbet tutamaz)
-    # Bu zaten ertesi_gun_servis_calisanlar sözlüğü ile aynı mantıkta. Direkt bugünü kontrol ediyoruz:
     for gun_gm, dr_set in ertesi_gun_servis_calisanlar.items():
         if len(dr_set) > 1:
             dr_list = list(dr_set)
-            # O gün serviste çalışanlardan sadece 1'i gece nöbetine kalabilir
             model.Add(sum(nobet[(dr, gun_gm)] for dr in dr_list) <= 1)
-    # =========================================================
 
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
@@ -343,9 +368,6 @@ def nobet_olustur(istek: YeniListeIstegi):
         
         return {"basari": True}
     else:
-        # =========================================================
-        # HATA TEŞHİS (DEDEKTİF) MOTORU - SAĞLAMLAŞTIRILMIŞ VERSİYON
-        # =========================================================
         hata_nedenleri = []
         try:
             izinler_dict = {}
@@ -474,6 +496,13 @@ def api_istenmeyen_guncelle(istek: GuncelleIstegi):
         supabase_client.table("istenmeyen_kisiler").insert([{"doktor_id": istek.doktor_id, "istenmeyen_doktor_id": i} for i in istek.idler]).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True, "mesaj": "Kısıtlamalar güncellendi!"}
+
+# YENİ: RESMİ TATİL EKLEME APİSİ
+@app.post("/api/resmi-tatil-ekle")
+def resmi_tatil_ekle(istek: YeniTatil):
+    supabase_client.table("resmi_tatiller").insert({"tarih": istek.tarih}).execute()
+    hastane.veritabanindan_yukle(supabase_client)
+    return {"basari": True}
 
 @app.post("/api/istasyon-ekle")
 def istasyon_ekle(istek: YeniIstasyon):
