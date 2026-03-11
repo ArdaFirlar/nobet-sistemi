@@ -237,6 +237,11 @@ function App() {
   const boslukSayisi = startDay === 0 ? 6 : startDay - 1;
   const ayIsimleri = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 
+  // YENİ: ARAYÜZDE TAVİZ/RİSK VAR MI KONTROLÜ
+  const hasTaviz = nobetListesi && Object.values(nobetListesi).some(detay =>
+    detay.eksik_kisi || (detay.nobetciler_detay && detay.nobetciler_detay.some(dr => dr.riskli))
+  );
+
   const isDark = tema === 'dark';
   const themeStyles = {
     appBg: isDark ? '#121212' : '#f0f4f8', textMain: isDark ? '#e0e0e0' : '#2c3e50',
@@ -613,10 +618,12 @@ function App() {
                 </div>
               </div>
 
-              {/* YENİ: KULLANICI BİLGİLENDİRME PANELİ */}
-              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '15px', backgroundColor: themeStyles.inputBg, padding: '10px', borderRadius: '8px' }}>
-                <strong>ℹ️ Bilgi:</strong> Tabloda <strong style={{ color: '#ff5722' }}>Turuncu Renkli ve ⚠️</strong> işaretli isimler, kuralların çok sıkışması sebebiyle mecburen taviz verilerek yazılmış "Servis Çakışması" olan doktorları gösterir. Fare ile ismin üzerine gelerek nedenini görebilirsiniz.
-              </div>
+              {/* YENİ: SADECE TAVİZ VARSA GÖRÜNEN BİLGİ KUTUSU */}
+              {hasTaviz && (
+                <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '15px', backgroundColor: themeStyles.inputBg, padding: '10px', borderRadius: '8px' }}>
+                  <strong>ℹ️ Bilgi:</strong> Tabloda <strong style={{ color: '#ff5722' }}>Turuncu Renkli ve ⚠️</strong> işaretli kısımlar, kuralların çok sıkışması sebebiyle mecburen taviz verilerek yazılmış "Servis Çakışması" olan doktorları veya "Eksik Kişiyle" tutulan tatil günlerini gösterir. Fare ile ⚠️ işaretinin üzerine gelerek nedenini görebilirsiniz.
+                </div>
+              )}
 
               <table className="excel-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '14px' }}>
                 <thead><tr style={{ backgroundColor: themeStyles.tableHeader }}><th>Tarih</th><th>Gün</th><th>Nöbetçi Doktorlar</th></tr></thead>
@@ -631,6 +638,7 @@ function App() {
                     });
 
                     const isWeekend = isWeekendDay || isHoliday;
+                    const isEksik = detay.eksik_kisi; // YENİ: Backend'den gelen eksik bilgisi
                     const hasMe = detay.nobetciler.includes(seciliDoktorObj?.isim);
 
                     let rowBg = 'transparent';
@@ -639,10 +647,13 @@ function App() {
 
                     return (
                       <tr key={tarih} style={{ backgroundColor: rowBg }}>
-                        <td style={{ fontWeight: 'bold' }}>{tarih} {isHoliday ? '🎉' : ''}</td>
+                        {/* YENİ: Eksik Tatil Gününü Vurgulama */}
+                        <td style={{ fontWeight: 'bold' }}>
+                          {tarih} {isHoliday ? '🎉' : ''}
+                          {isEksik && <span style={{ cursor: 'help', marginLeft: '5px', fontSize: '16px' }} title="Doktor yetersizliğinden mecburen 3 yerine 2 kişi atandı">⚠️</span>}
+                        </td>
                         <td style={{ fontWeight: isWeekend ? 'bold' : 'normal', color: isWeekend ? themeStyles.btnDanger : 'inherit' }}>{detay.gun_adi}</td>
                         <td style={{ fontWeight: hasMe ? 'bold' : 'normal' }}>
-                          {/* YENİ: RİSKLİ (TAVİZ VERİLEN) DOKTORLARI RENKLENDİRME */}
                           {detay.nobetciler_detay ? detay.nobetciler_detay.map((dr, idx) => (
                             <span key={idx} style={{
                               color: dr.riskli ? '#ff5722' : (dr.isim === seciliDoktorObj?.isim ? '#2e7d32' : 'inherit'),
