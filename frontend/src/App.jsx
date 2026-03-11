@@ -40,7 +40,6 @@ function App() {
   const [duzenlenenDrId, setDuzenlenenDrId] = useState(null)
   const [duzenlenenIstId, setDuzenlenenIstId] = useState(null)
 
-  // YENİ: DOKTOR KURAL STATE'LERİ EKLENDİ
   const [yeniDr, setYeniDr] = useState({
     isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false,
     nobet_hedefi: 4, haftasonu_hedefi: 1, kural_tipi: "MAX", persembe_yasak_mi: false
@@ -107,8 +106,13 @@ function App() {
         body: JSON.stringify({ yil: takvimYil, ay: takvimAy })
       });
       const result = await res.json();
-      if (result.basari) { mevcutListeyiGetir(); }
-      else { setListeDurumu("❌ Kurallar çok sıkı, mevcut doktorlarla liste oluşturulamadı."); }
+      if (result.basari) {
+        mevcutListeyiGetir();
+      }
+      else {
+        // YENİ: Teşhis Raporunu doğrudan Backend'den okuyoruz
+        setListeDurumu(result.mesaj || "❌ Kurallar çok sıkı, mevcut doktorlarla liste oluşturulamadı.");
+      }
     } catch (err) { setListeDurumu("Sunucu bağlantı hatası."); }
     finally { setYukleniyor(false) }
   }
@@ -187,7 +191,7 @@ function App() {
 
   const istasyonDuzenlemeyiBaslat = (ist) => {
     setDuzenlenenIstId(ist.id);
-    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi, servis_mi: ist.servis_mi || false, hafta_sonu_calisir_mi: ist.haft_sonu_calisir_mi || false });
+    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi, servis_mi: ist.servis_mi || false, hafta_sonu_calisir_mi: ist.hafta_sonu_calisir_mi || false });
   }
 
   const doktorKaydet = async () => {
@@ -197,7 +201,6 @@ function App() {
     } else {
       await fetch(`${API_URL}/doktor-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniDr) });
     }
-    // Formu sıfırla
     setYeniDr({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false, nobet_hedefi: 4, haftasonu_hedefi: 1, kural_tipi: "MAX", persembe_yasak_mi: false });
     temelVerileriCek();
   }
@@ -453,7 +456,7 @@ function App() {
                 )}
 
                 {adminTab === "veri" && (
-                  <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                  <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                     <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
                       <h4 style={{ marginTop: 0 }}>{duzenlenenIstId ? 'İstasyonu Düzenle' : 'Yeni İstasyon Ekle'}</h4>
                       <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
@@ -513,7 +516,6 @@ function App() {
                           </select>
                         </div>
 
-                        {/* YENİ: ALGORİTMA KONTROL PANELİ */}
                         <div style={{ backgroundColor: themeStyles.inputBg, padding: '10px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
                           <h5 style={{ margin: '0 0 10px 0', color: themeStyles.btnPrimary }}>📌 Algoritma Kuralları</h5>
 
@@ -582,7 +584,8 @@ function App() {
             </div>
           )}
 
-          {listeDurumu && <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, textAlign: 'center', fontWeight: 'bold', fontSize: '16px' }}>{listeDurumu}</div>}
+          {/* YENİ: Hata metinlerinin alt alta ve düzenli görünmesi için 'whiteSpace: pre-wrap' ve 'textAlign: left' eklendi */}
+          {listeDurumu && <div style={{ backgroundColor: themeStyles.cardBg, padding: '20px', borderRadius: '16px', boxShadow: themeStyles.cardShadow, textAlign: 'left', whiteSpace: 'pre-wrap', fontWeight: 'bold', fontSize: '15px', lineHeight: '1.5' }}>{listeDurumu}</div>}
 
           {uyari && isAuthedAdmin && <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '12px', marginBottom: '20px', fontWeight: 'bold', boxShadow: themeStyles.cardShadow, fontSize: '14px' }}>{uyari}</div>}
 

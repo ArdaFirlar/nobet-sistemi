@@ -191,10 +191,6 @@ def nobet_olustur(istek: YeniListeIstegi):
                     model.Add(nobet[(gm["doktor_id"], gm_tarih.day)] == 0)
         except: pass
 
-    # =========================================================
-    # YENİ: ERTESİ GÜN HASAR KONTROLÜ (Geleceği Görme)
-    # =========================================================
-    # Önce ayın tüm günlerindeki gündüz mesaisi çalışanlarını gün bazında gruplayalım:
     gunluk_mesaiciler = {}
     for gm in hastane.gunduz_mesaileri:
         try:
@@ -208,17 +204,13 @@ def nobet_olustur(istek: YeniListeIstegi):
                     gunluk_mesaiciler[gun_gm].add(dr_id)
         except Exception: pass
 
-    # Bugüne nöbet yazarken, yarının (ertesi günün) mesai listesine bak:
-    for gun in range(1, num_days): # Son günü saymıyoruz çünkü ertesi gün öteki aya taşıyor
+    for gun in range(1, num_days): 
         ertesi_gun = gun + 1
         if ertesi_gun in gunluk_mesaiciler:
             ertesi_gunun_doktorlari = list(gunluk_mesaiciler[ertesi_gun])
-            # Ertesi gün çalışanlardan en fazla 1 kişiyi BUGÜNÜN nöbetine yazabilirsin!
             if len(ertesi_gunun_doktorlari) > 1:
                 model.Add(sum(nobet[(dr, gun)] for dr in ertesi_gunun_doktorlari) <= 1)
-    # =========================================================
 
-    # Servis Kontrolü (Aynı serviste çalışanlar aynı gün nöbet tutamaz)
     servis_istasyon_idler = []
     for i in hastane.istasyonlar:
         val = i.get("servis_mi")
@@ -232,7 +224,6 @@ def nobet_olustur(istek: YeniListeIstegi):
             if gm_ist_id in servis_istasyon_idler:
                 tarih_str = str(gm["tarih"]).split("T")[0] 
                 yil_gm, ay_gm, gun_gm = map(int, tarih_str.split("-"))
-                
                 if yil_gm == yil and ay_gm == ay:
                     if gun_gm not in servis_gunluk_calisanlar:
                         servis_gunluk_calisanlar[gun_gm] = set()
@@ -246,7 +237,6 @@ def nobet_olustur(istek: YeniListeIstegi):
             dr_list = list(dr_set)
             model.Add(sum(nobet[(dr, gun_gm)] for dr in dr_list) <= 1)
 
-    # 2 Gün Dinlenme Kuralı
     for dr in doktor_idler:
         for gun in range(1, num_days + 1):
             if gun + 1 <= num_days:
@@ -357,7 +347,75 @@ def nobet_olustur(istek: YeniListeIstegi):
         
         return {"basari": True}
     else:
-        return {"basari": False, "mesaj": "Kurallar çok sıkı, hiçbir çözüm bulunamadı."}
+        # =========================================================
+        # YAPAY ZEKA HATA TEŞHİS MOTORU (DEDEKİF MODU)
+        # =========================================================
+        hata_nedenleri = []
+        
+        izinler_dict = {}
+        for iz in hastane.izinler:
+            try:
+                t = datetime.strptime(iz["tarih"], "%Y-%m-%d")
+                if t.year == yil and t.month == ay:
+                    izinler_dict.setdefault(t.day, set()).add(int(iz["doktor_id"]))
+            except: pass
+            
+        engelliler_dict = {}
+        yarin_calisan_dict = {}
+        engel_ist_idler = [int(i["id"]) for i in hastane.istasyonlar if i.get("nobete_engel_mi")]
+        
+        for gm in hastane.gunduz_mesaileri:
+            try:
+                t = str(gm["tarih"]).split("T")[0]
+                y, a, g = map(int, t.split("-"))
+                if y == yil and a == ay:
+                    d_id = int(gm["doktor_id"])
+                    ist_id = int(gm["istasyon_id"])
+                    yarin_calisan_dict.setdefault(g, set()).add(d_id)
+                    if ist_id in engel_ist_idler:
+                        engelliler_dict.setdefault(g, set()).add(d_id)
+            except: pass
+
+        toplam_gerekli_nobet = sum(3 if g in haftasonu_gunler else 2 for g in range(1, num_days + 1))
+        toplam_dr_kapasitesi = sum(int(dr.get("nobet_hedefi", 4)) for dr in aktif_doktorlar)
+        
+        if toplam_dr_kapasitesi < toplam_gerekli_nobet:
+            hata_nedenleri.append(f"Aylık toplam kapasite yetersiz! Bu ay {toplam_gerekli_nobet} boş nöbet var ama doktorların hedefleri toplamı {toplam_dr_kapasitesi}.")
+
+        yasakli_persembeler = {int(d["id"]) for d in aktif_doktorlar if d.get("persembe_yasak_mi")}
+
+        for gun in range(1, num_days + 1):
+            gerekli = 3 if gun in haftasonu_gunler else 2
+            musaitler = set(doktor_idler)
+            
+            musaitler -= izinler_dict.get(gun, set())
+            musaitler -= engelliler_dict.get(gun, set())
+            
+            if gun in persembe_gunler:
+                musaitler -= yasakli_persembeler
+                
+            if len(musaitler) < gerekli:
+                hata_nedenleri.append(f"Ayın {gun}. Günü: İzinler ve engel istasyonlar yüzünden {gerekli} kişi çıkmıyor (Sadece {len(musaitler)} kişi müsait).")
+                continue
+                
+            ertesi_gun = gun + 1
+            if ertesi_gun <= num_days:
+                yarin_calisanlar = yarin_calisan_dict.get(ertesi_gun, set())
+                sadece_bugun = musaitler - yarin_calisanlar
+                kesisim = musaitler.intersection(yarin_calisanlar)
+                
+                max_yazilabilen = len(sadece_bugun) + (1 if kesisim else 0)
+                if max_yazilabilen < gerekli:
+                    hata_nedenleri.append(f"Ayın {gun}. Günü: Ertesi gün mesaisi olanları koruma kuralı yüzünden tıkandı (Ertesi gün çok kişi mesaide).")
+                    
+        if not hata_nedenleri:
+            hata_nedenleri.append("Genel Kilitlenme: Özel bir gün değil ancak '2 Gün Dinlenme' kuralı, kotalar ve servis kısıtlamaları üst üste binip matematiksel olarak çıkmaza girdi.")
+
+        mesaj = "❌ Kurallar Çok Sıkı!\nAlgoritma şu sebeplerden dolayı tıkandı:\n\n" + "\n".join(f"👉 {h}" for h in hata_nedenleri[:5])
+        if len(hata_nedenleri) > 5:
+            mesaj += f"\n\n... ve {len(hata_nedenleri)-5} sorunlu gün daha tespit edildi."
+            
+        return {"basari": False, "mesaj": mesaj}
 
 @app.post("/api/liste-sil")
 def liste_sil(istek: YeniListeIstegi):
@@ -377,7 +435,7 @@ def gunduz_mesaisi_kaydet(istek: GunduzMesaisiIstegi):
 def gunduz_mesaisi_toplu_kaydet(istek: TopluGunduzMesaisiIstegi):
     num_days = calendar.monthrange(istek.yil, istek.ay)[1]
     istasyon = next((i for i in hastane.istasyonlar if i["id"] == istek.istasyon_id), None)
-    haftasonu_calisir = istasyon.get("hafta_sonu_calisir_mi", False) if istasyon else False
+    haftasonu_calisir = istasyon.get("haft_sonu_calisir_mi", False) if istasyon else False
 
     tum_tarihler = [f"{istek.yil}-{istek.ay:02d}-{g:02d}" for g in range(1, num_days + 1)]
     for t in tum_tarihler:
