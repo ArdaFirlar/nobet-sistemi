@@ -40,9 +40,12 @@ function App() {
   const [duzenlenenDrId, setDuzenlenenDrId] = useState(null)
   const [duzenlenenIstId, setDuzenlenenIstId] = useState(null)
 
-  const [yeniDr, setYeniDr] = useState({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false })
+  // YENİ: DOKTOR KURAL STATE'LERİ EKLENDİ
+  const [yeniDr, setYeniDr] = useState({
+    isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false,
+    nobet_hedefi: 4, haftasonu_hedefi: 1, kural_tipi: "MAX", persembe_yasak_mi: false
+  })
 
-  // YENİ ALAN EKLENDİ: hafta_sonu_calisir_mi
   const [yeniIst, setYeniIst] = useState({ isim: "", nobete_engel_mi: false, servis_mi: false, hafta_sonu_calisir_mi: false })
 
   const seciliDoktorObj = doktorlar.find(d => d.id.toString() === seciliDoktor.toString());
@@ -184,7 +187,7 @@ function App() {
 
   const istasyonDuzenlemeyiBaslat = (ist) => {
     setDuzenlenenIstId(ist.id);
-    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi, servis_mi: ist.servis_mi || false, hafta_sonu_calisir_mi: ist.hafta_sonu_calisir_mi || false });
+    setYeniIst({ isim: ist.isim, nobete_engel_mi: ist.nobete_engel_mi, servis_mi: ist.servis_mi || false, hafta_sonu_calisir_mi: ist.haft_sonu_calisir_mi || false });
   }
 
   const doktorKaydet = async () => {
@@ -194,13 +197,20 @@ function App() {
     } else {
       await fetch(`${API_URL}/doktor-ekle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(yeniDr) });
     }
-    setYeniDr({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false });
+    // Formu sıfırla
+    setYeniDr({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false, nobet_hedefi: 4, haftasonu_hedefi: 1, kural_tipi: "MAX", persembe_yasak_mi: false });
     temelVerileriCek();
   }
 
   const doktorDuzenlemeyiBaslat = (dr) => {
     setDuzenlenenDrId(dr.id);
-    setYeniDr({ isim: dr.isim, kidem: dr.kidem, rol: dr.rol, muaf_mi: dr.muaf_mi });
+    setYeniDr({
+      isim: dr.isim, kidem: dr.kidem, rol: dr.rol, muaf_mi: dr.muaf_mi,
+      nobet_hedefi: dr.nobet_hedefi || 4,
+      haftasonu_hedefi: dr.haftasonu_hedefi || 1,
+      kural_tipi: dr.kural_tipi || "MAX",
+      persembe_yasak_mi: dr.persembe_yasak_mi || false
+    });
   }
 
   const paylasimMetniOlustur = () => {
@@ -273,7 +283,6 @@ function App() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: themeStyles.modalBg, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: themeStyles.cardBg, color: themeStyles.textMain, padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', border: `1px solid ${themeStyles.panelBorder}` }}>
             <h3 style={{ marginTop: 0, color: '#ff9800' }}>{seciliTopluIstasyon.isim} - Tüm Ay Atama</h3>
-            {/* ZEKİ UYARI MESAJI BURADA */}
             <p style={{ fontSize: '13px', opacity: 0.8, marginTop: '-10px' }}>
               Seçtiğiniz kişiler ayın <strong style={{ color: '#ff9800' }}>{seciliTopluIstasyon.id && istasyonlar.find(i => i.id === seciliTopluIstasyon.id)?.hafta_sonu_calisir_mi ? 'HER GÜNÜ' : 'SADECE HAFTA İÇİ GÜNLERİ'}</strong> bu istasyona atanır.
             </p>
@@ -444,7 +453,7 @@ function App() {
                 )}
 
                 {adminTab === "veri" && (
-                  <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                  <div className="mobil-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
                     <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
                       <h4 style={{ marginTop: 0 }}>{duzenlenenIstId ? 'İstasyonu Düzenle' : 'Yeni İstasyon Ekle'}</h4>
                       <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
@@ -457,7 +466,6 @@ function App() {
                           <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#ff9800' }} className="mobil-buton-tam">
                             <input type="checkbox" checked={yeniIst.servis_mi} onChange={e => setYeniIst({ ...yeniIst, servis_mi: e.target.checked })} /> Servis mi?
                           </label>
-                          {/* YENİ KUTUCUK: Hafta Sonu Çalışır Mı? */}
                           <label style={{ display: 'flex', alignItems: 'center', fontSize: '12px', color: '#2e7d32' }} className="mobil-buton-tam">
                             <input type="checkbox" checked={yeniIst.hafta_sonu_calisir_mi} onChange={e => setYeniIst({ ...yeniIst, hafta_sonu_calisir_mi: e.target.checked })} /> H.Sonu Çalışır?
                           </label>
@@ -488,35 +496,72 @@ function App() {
 
                     <div style={{ backgroundColor: themeStyles.appBg, padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
                       <h4 style={{ marginTop: 0 }}>{duzenlenenDrId ? 'Doktoru Düzenle' : 'Yeni Doktor Ekle'}</h4>
+
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
                         <input type="text" placeholder="Doktor Adı Soyadı" value={yeniDr.isim} onChange={e => setYeniDr({ ...yeniDr, isim: e.target.value })} style={{ padding: '8px', backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} />
+
                         <div className="mobil-flex-kolon" style={{ display: 'flex', gap: '10px' }}>
                           <select value={yeniDr.kidem} onChange={e => setYeniDr({ ...yeniDr, kidem: e.target.value })} style={{ padding: '8px', flex: 1, backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} className="mobil-buton-tam">
                             <option value="EN_COMEZ">En Çömez</option>
                             <option value="COMEZ">Çömez</option>
                             <option value="ASISTAN">Asistan</option>
+                            <option value="KIDEMLI_ASISTAN">Kıdemli Asistan</option>
                           </select>
                           <select value={yeniDr.rol} onChange={e => setYeniDr({ ...yeniDr, rol: e.target.value })} style={{ padding: '8px', flex: 1, backgroundColor: themeStyles.inputBg, color: themeStyles.inputText }} className="mobil-buton-tam">
                             <option value="Standart">Standart</option>
                             <option value="Admin">Yönetici</option>
                           </select>
                         </div>
-                        <label style={{ display: 'flex', alignItems: 'center', fontSize: '13px', color: themeStyles.btnDanger }}><input type="checkbox" checked={yeniDr.muaf_mi} onChange={e => setYeniDr({ ...yeniDr, muaf_mi: e.target.checked })} /> Nöbetten Tamamen Muaf Mı?</label>
 
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <button onClick={doktorKaydet} style={{ flex: 1, padding: '8px', backgroundColor: duzenlenenDrId ? '#ff9800' : themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
-                            {duzenlenenDrId ? 'Güncelle' : 'Ekle'}
+                        {/* YENİ: ALGORİTMA KONTROL PANELİ */}
+                        <div style={{ backgroundColor: themeStyles.inputBg, padding: '10px', borderRadius: '8px', border: `1px solid ${themeStyles.panelBorder}` }}>
+                          <h5 style={{ margin: '0 0 10px 0', color: themeStyles.btnPrimary }}>📌 Algoritma Kuralları</h5>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                            <div>
+                              <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Aylık Hedef</label>
+                              <input type="number" min="0" value={yeniDr.nobet_hedefi} onChange={e => setYeniDr({ ...yeniDr, nobet_hedefi: parseInt(e.target.value) })} style={{ width: '100%', padding: '6px', backgroundColor: themeStyles.appBg, color: themeStyles.textMain, border: `1px solid ${themeStyles.panelBorder}`, borderRadius: '4px' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>H.Sonu Hedefi</label>
+                              <input type="number" min="0" value={yeniDr.haftasonu_hedefi} onChange={e => setYeniDr({ ...yeniDr, haftasonu_hedefi: parseInt(e.target.value) })} style={{ width: '100%', padding: '6px', backgroundColor: themeStyles.appBg, color: themeStyles.textMain, border: `1px solid ${themeStyles.panelBorder}`, borderRadius: '4px' }} />
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                            <div>
+                              <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Kural Türü (Tam=Kesin Uyar, MAX=Esnek Uyar)</label>
+                              <select value={yeniDr.kural_tipi} onChange={e => setYeniDr({ ...yeniDr, kural_tipi: e.target.value })} style={{ width: '100%', padding: '6px', backgroundColor: themeStyles.appBg, color: themeStyles.textMain, border: `1px solid ${themeStyles.panelBorder}`, borderRadius: '4px' }}>
+                                <option value="TAM">KESİN (Tam Bu Sayıda Tutar)</option>
+                                <option value="MAX">ESNEK (En Fazla Bu Sayıda Tutar)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', fontSize: '13px', color: themeStyles.btnDanger }}><input type="checkbox" checked={yeniDr.muaf_mi} onChange={e => setYeniDr({ ...yeniDr, muaf_mi: e.target.checked })} /> Nöbetten Tamamen Muaf</label>
+                          <label style={{ display: 'flex', alignItems: 'center', fontSize: '13px', color: '#ff9800' }}><input type="checkbox" checked={yeniDr.persembe_yasak_mi} onChange={e => setYeniDr({ ...yeniDr, persembe_yasak_mi: e.target.checked })} /> Perşembe Günü Yazılamaz</label>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                          <button onClick={doktorKaydet} style={{ flex: 1, padding: '10px', backgroundColor: duzenlenenDrId ? '#ff9800' : themeStyles.btnPrimary, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                            {duzenlenenDrId ? 'Güncelle' : 'Doktoru Kaydet'}
                           </button>
-                          {duzenlenenDrId && <button onClick={() => { setDuzenlenenDrId(null); setYeniDr({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false }); }} style={{ flex: 1, padding: '8px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>İptal</button>}
+                          {duzenlenenDrId && <button onClick={() => { setDuzenlenenDrId(null); setYeniDr({ isim: "", kidem: "COMEZ", rol: "Standart", muaf_mi: false, nobet_hedefi: 4, haftasonu_hedefi: 1, kural_tipi: "MAX", persembe_yasak_mi: false }); }} style={{ flex: 1, padding: '10px', backgroundColor: themeStyles.btnDanger, color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>İptal</button>}
                         </div>
                       </div>
+
                       <ul style={{ maxHeight: '200px', overflowY: 'auto', paddingLeft: '15px', fontSize: '13px' }}>
                         {doktorlar.map(d => (
-                          <li key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${themeStyles.panelBorder}` }}>
-                            <span>{d.isim} ({d.kidem}) {d.muaf_mi ? '⭐' : ''}</span>
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                              <button onClick={() => doktorDuzenlemeyiBaslat(d)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️ Düzenle</button>
-                              <button onClick={() => veriSil('doktorlar', d.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️ Sil</button>
+                          <li key={d.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${themeStyles.panelBorder}` }}>
+                            <div>
+                              <strong>{d.isim} ({d.kidem})</strong> <br />
+                              <span style={{ opacity: 0.7, fontSize: '11px' }}>Hedef: {d.nobet_hedefi} (HS: {d.haftasonu_hedefi}) - {d.kural_tipi} {d.persembe_yasak_mi ? '- P.Yasak' : ''}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                              <button onClick={() => doktorDuzenlemeyiBaslat(d)} style={{ color: '#ff9800', border: 'none', background: 'none', cursor: 'pointer' }}>✏️</button>
+                              <button onClick={() => veriSil('doktorlar', d.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>🗑️</button>
                             </div>
                           </li>
                         ))}

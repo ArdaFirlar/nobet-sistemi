@@ -56,13 +56,18 @@ class YeniIstasyon(BaseModel):
     isim: str
     nobete_engel_mi: bool
     servis_mi: bool
-    hafta_sonu_calisir_mi: bool # YENİ EKLENEN KİMLİK
+    hafta_sonu_calisir_mi: bool
 
+# YENİ DOKTOR MODELİ (Kurallar Eklendi)
 class YeniDoktor(BaseModel):
     isim: str
     kidem: str
     rol: str
     muaf_mi: bool
+    nobet_hedefi: int
+    haftasonu_hedefi: int
+    kural_tipi: str
+    persembe_yasak_mi: bool
 
 class OncekiAyDevir(BaseModel):
     doktor_id: int
@@ -153,10 +158,6 @@ def nobet_olustur(istek: YeniListeIstegi):
     if len(doktor_idler) < 3:
         return {"basari": False, "mesaj": "Hafta sonu nöbeti yazmak için en az 3 aktif doktor bulunmalıdır."}
 
-    en_comez_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "EN_COMEZ"]
-    comez_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "COMEZ"]
-    asistan_idler = [d["id"] for d in aktif_doktorlar if d.get("kidem") == "ASISTAN"]
-
     haftasonu_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() >= 5]
     persembe_gunler = [g for g in range(1, num_days + 1) if datetime(yil, ay, g).weekday() == 3]
 
@@ -191,7 +192,6 @@ def nobet_olustur(istek: YeniListeIstegi):
 
     servis_istasyon_idler = [i["id"] for i in hastane.istasyonlar if i.get("servis_mi", False)]
     servis_gunluk_calisanlar = {}
-    
     for gm in hastane.gunduz_mesaileri:
         if gm["istasyon_id"] in servis_istasyon_idler:
             try:
@@ -225,32 +225,48 @@ def nobet_olustur(istek: YeniListeIstegi):
             elif str(oan["gun_tipi"]) == "2":
                 model.Add(nobet[(dr_id, 1)] == 0)
 
-    asistan_yukleri = []
+    # =========================================================
+    # YENİ NESİL DİNAMİK KURAL VE ADALET MOTORU
+    # =========================================================
+    esnek_dr_yukleri = []
+    ceza_puanlari = []
     
     for dr in doktor_idler:
+        dr_data = next((d for d in aktif_doktorlar if d["id"] == dr), {})
+        
+        n_hedef = dr_data.get("nobet_hedefi") or 4
+        h_hedef = dr_data.get("haftasonu_hedefi") or 1
+        k_tipi = dr_data.get("kural_tipi") or "MAX"
+        p_yasak = dr_data.get("persembe_yasak_mi", False)
+
         dr_toplam_nobet = sum(nobet[(dr, gun)] for gun in range(1, num_days + 1))
         dr_haftasonu_nobet = sum(nobet[(dr, gun)] for gun in haftasonu_gunler)
         
-        if dr in en_comez_idler:
-            model.Add(dr_toplam_nobet == 6)
-            model.Add(dr_haftasonu_nobet == 3)
+        # Perşembe Yasağı Varsa
+        if p_yasak:
             for gun in persembe_gunler:
                 model.Add(nobet[(dr, gun)] == 0)
                 
-        elif dr in comez_idler:
-            model.Add(dr_toplam_nobet == 5)
-            model.Add(dr_haftasonu_nobet == 2)
-            for gun in persembe_gunler:
-                model.Add(nobet[(dr, gun)] == 0)
-                
-        elif dr in asistan_idler:
-            model.Add(dr_toplam_nobet <= 4)
+        # Kesin (TAM) Kural
+        if k_tipi == "TAM":
+            model.Add(dr_toplam_nobet == n_hedef)
+            model.Add(dr_haftasonu_nobet == h_hedef)
+            
+        # Maksimum/Esnek (MAX) Kural
+        elif k_tipi == "MAX":
+            model.Add(dr_toplam_nobet <= n_hedef)
+            model.Add(dr_haftasonu_nobet <= h_hedef)
+            
+            # Adalet Puanı Hesaplama (Sadece MAX olanlar boşlukları doldurur, o yüzden iş yüklerini eşitliyoruz)
             dr_yuk = model.NewIntVar(0, 50, f"yuk_dr_{dr}")
             model.Add(dr_yuk == dr_toplam_nobet + dr_haftasonu_nobet)
-            asistan_yukleri.append(dr_yuk)
+            esnek_dr_yukleri.append(dr_yuk)
+            
+            # MAX doktorları hafta sonundan uzak tutmak için hafif ceza
+            for gun in haftasonu_gunler:
+                ceza_puanlari.append(nobet[(dr, gun)] * 50)
 
-    ceza_puanlari = []
-    
+    # İstenmeyen Kişiler
     for ist in hastane.istenmeyenler:
         dr1 = ist["doktor_id"]
         dr2 = ist["istenmeyen_doktor_id"]
@@ -260,15 +276,12 @@ def nobet_olustur(istek: YeniListeIstegi):
                 model.AddMultiplicationEquality(birlikte, [nobet[(dr1, gun)], nobet[(dr2, gun)]])
                 ceza_puanlari.append(birlikte * 100)
 
-    for dr in asistan_idler:
-        for gun in haftasonu_gunler:
-            ceza_puanlari.append(nobet[(dr, gun)] * 50)
-
-    if len(asistan_yukleri) > 1:
+    # Esnek (MAX) Doktorlar Arası Uçurum Engelleme (Adalet Terazisi)
+    if len(esnek_dr_yukleri) > 1:
         max_yuk = model.NewIntVar(0, 50, "max_yuk")
         min_yuk = model.NewIntVar(0, 50, "min_yuk")
-        model.AddMaxEquality(max_yuk, asistan_yukleri)
-        model.AddMinEquality(min_yuk, asistan_yukleri)
+        model.AddMaxEquality(max_yuk, esnek_dr_yukleri)
+        model.AddMinEquality(min_yuk, esnek_dr_yukleri)
         
         fark = model.NewIntVar(0, 50, "yuk_farki")
         model.Add(fark == max_yuk - min_yuk)
@@ -328,34 +341,24 @@ def gunduz_mesaisi_kaydet(istek: GunduzMesaisiIstegi):
 @app.post("/api/gunduz-mesaisi-toplu-kaydet")
 def gunduz_mesaisi_toplu_kaydet(istek: TopluGunduzMesaisiIstegi):
     num_days = calendar.monthrange(istek.yil, istek.ay)[1]
-    
-    # 1. İstasyonun hafta sonu çalışıp çalışmadığını öğreniyoruz
     istasyon = next((i for i in hastane.istasyonlar if i["id"] == istek.istasyon_id), None)
     haftasonu_calisir = istasyon.get("hafta_sonu_calisir_mi", False) if istasyon else False
 
-    # 2. Önce o aya ait bu istasyondaki TÜM atamaları sıfırlıyoruz (Eskileri temizlemek için)
     tum_tarihler = [f"{istek.yil}-{istek.ay:02d}-{g:02d}" for g in range(1, num_days + 1)]
     for t in tum_tarihler:
         supabase_client.table("gunduz_mesaileri").delete().eq("tarih", t).eq("istasyon_id", istek.istasyon_id).execute()
 
-    # 3. Sadece uygun olan günlere atama yapıyoruz
     if istek.doktor_idler:
         eklenecekler = []
         for g in range(1, num_days + 1):
             gun_index = datetime(istek.yil, istek.ay, g).weekday()
             is_weekend = gun_index >= 5
-            
-            # Eğer gün hafta sonuysa VE istasyon hafta sonu çalışmıyorsa o günü ATLA!
-            if is_weekend and not haftasonu_calisir:
-                continue
-                
+            if is_weekend and not haftasonu_calisir: continue
             t = f"{istek.yil}-{istek.ay:02d}-{g:02d}"
             for d_id in istek.doktor_idler:
                 eklenecekler.append({"tarih": t, "istasyon_id": istek.istasyon_id, "doktor_id": d_id})
-                
         if eklenecekler:
             supabase_client.table("gunduz_mesaileri").insert(eklenecekler).execute()
-
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
@@ -384,10 +387,8 @@ def api_istenmeyen_guncelle(istek: GuncelleIstegi):
 @app.post("/api/istasyon-ekle")
 def istasyon_ekle(istek: YeniIstasyon):
     supabase_client.table("istasyonlar").insert({
-        "isim": istek.isim, 
-        "nobete_engel_mi": istek.nobete_engel_mi, 
-        "servis_mi": istek.servis_mi,
-        "hafta_sonu_calisir_mi": istek.hafta_sonu_calisir_mi # YENİ ALAN
+        "isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, 
+        "servis_mi": istek.servis_mi, "hafta_sonu_calisir_mi": istek.hafta_sonu_calisir_mi
     }).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
@@ -395,23 +396,29 @@ def istasyon_ekle(istek: YeniIstasyon):
 @app.put("/api/istasyon-guncelle/{id}")
 def istasyon_guncelle(id: int, istek: YeniIstasyon):
     supabase_client.table("istasyonlar").update({
-        "isim": istek.isim, 
-        "nobete_engel_mi": istek.nobete_engel_mi, 
-        "servis_mi": istek.servis_mi,
-        "hafta_sonu_calisir_mi": istek.hafta_sonu_calisir_mi # YENİ ALAN
+        "isim": istek.isim, "nobete_engel_mi": istek.nobete_engel_mi, 
+        "servis_mi": istek.servis_mi, "hafta_sonu_calisir_mi": istek.hafta_sonu_calisir_mi
     }).eq("id", id).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
 @app.post("/api/doktor-ekle")
 def doktor_ekle(istek: YeniDoktor):
-    supabase_client.table("doktorlar").insert({"isim": istek.isim, "kidem": istek.kidem, "rol": istek.rol, "muaf_mi": istek.muaf_mi}).execute()
+    supabase_client.table("doktorlar").insert({
+        "isim": istek.isim, "kidem": istek.kidem, "rol": istek.rol, "muaf_mi": istek.muaf_mi,
+        "nobet_hedefi": istek.nobet_hedefi, "haftasonu_hedefi": istek.haftasonu_hedefi,
+        "kural_tipi": istek.kural_tipi, "persembe_yasak_mi": istek.persembe_yasak_mi
+    }).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
 @app.put("/api/doktor-guncelle/{id}")
 def doktor_guncelle(id: int, istek: YeniDoktor):
-    supabase_client.table("doktorlar").update({"isim": istek.isim, "kidem": istek.kidem, "rol": istek.rol, "muaf_mi": istek.muaf_mi}).eq("id", id).execute()
+    supabase_client.table("doktorlar").update({
+        "isim": istek.isim, "kidem": istek.kidem, "rol": istek.rol, "muaf_mi": istek.muaf_mi,
+        "nobet_hedefi": istek.nobet_hedefi, "haftasonu_hedefi": istek.haftasonu_hedefi,
+        "kural_tipi": istek.kural_tipi, "persembe_yasak_mi": istek.persembe_yasak_mi
+    }).eq("id", id).execute()
     hastane.veritabanindan_yukle(supabase_client)
     return {"basari": True}
 
