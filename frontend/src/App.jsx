@@ -615,11 +615,11 @@ function App() {
                 </div>
               </div>
 
-              {/* YENİ: BİRLEŞTİRİLMİŞ TEK BİR UYARI KUTUSU */}
+              {/* SADECE RİSK VARSA GÖZÜKEN KUTUCUK */}
               {(hasTaviz || uyari) && isAuthedAdmin && (
                 <div style={{ fontSize: '13px', opacity: 0.9, marginBottom: '15px', backgroundColor: '#fff3cd', color: '#856404', padding: '12px', borderRadius: '8px', border: '1px solid #ffeeba' }}>
-                  <strong>⚠️ Dikkat:</strong> {uyari || "Kurallar çok sıkıştığı için algoritma bazı tavizler verdi."}<br />
-                  Tabloda <strong style={{ color: '#ff5722' }}>Turuncu Renkli</strong> veya <strong style={{ fontSize: '14px' }}>⚠️</strong> işaretli yerler bu tavizleri (Servis Çakışması, Eksik Kişi, Kota Aşımı vb.) gösterir. Fare ile üzerlerine gelerek nedeni okuyabilirsiniz.
+                  <strong>⚠️ Dikkat:</strong> Kurallar çok sıkıştığı için algoritma bazı tavizler verdi.<br />
+                  Tabloda <strong style={{ color: '#ff5722' }}>Turuncu Renkli</strong> isimler veya tarihin yanındaki <strong style={{ fontSize: '14px' }}>⚠️</strong> işareti bu tavizleri gösterir. Bilgisayarda fare ile üzerine gelerek, <strong>telefonda ise isme/ikona dokunarak</strong> nedeni okuyabilirsiniz.
                 </div>
               )}
 
@@ -647,18 +647,22 @@ function App() {
                       <tr key={tarih} style={{ backgroundColor: rowBg }}>
                         <td style={{ fontWeight: 'bold' }}>
                           {tarih} {isHoliday ? '🎉' : ''}
-                          {isEksik && <span style={{ cursor: 'help', marginLeft: '5px', fontSize: '16px' }} title="Doktor yetersizliğinden mecburen 3 yerine 2 kişi atandı">⚠️</span>}
+                          {isEksik && <span
+                            onClick={() => alert("Doktor yetersizliğinden mecburen 3 yerine 2 kişi atandı!")}
+                            style={{ cursor: 'pointer', marginLeft: '5px', fontSize: '16px' }}
+                            title="Doktor yetersizliğinden mecburen 3 yerine 2 kişi atandı">⚠️</span>}
                         </td>
                         <td style={{ fontWeight: isWeekend ? 'bold' : 'normal', color: isWeekend ? themeStyles.btnDanger : 'inherit' }}>{detay.gun_adi}</td>
                         <td style={{ fontWeight: hasMe ? 'bold' : 'normal' }}>
                           {detay.nobetciler_detay ? detay.nobetciler_detay.map((dr, idx) => (
-                            <span key={idx} style={{
-                              color: dr.riskli ? '#ff5722' : (dr.isim === seciliDoktorObj?.isim ? '#2e7d32' : 'inherit'),
-                              fontWeight: dr.riskli || dr.isim === seciliDoktorObj?.isim ? 'bold' : 'normal',
-                              textDecoration: dr.riskli ? 'underline' : 'none',
-                              cursor: dr.riskli ? 'help' : 'default'
-                            }} title={dr.sebep}>
-                              {dr.isim} {dr.riskli && <span style={{ fontSize: '12px' }}>⚠️</span>}
+                            <span key={idx}
+                              onClick={() => { if (dr.riskli) alert(dr.sebep); }}
+                              style={{
+                                color: dr.riskli ? '#ff5722' : (dr.isim === seciliDoktorObj?.isim ? '#2e7d32' : 'inherit'),
+                                fontWeight: dr.riskli || dr.isim === seciliDoktorObj?.isim ? 'bold' : 'normal',
+                                cursor: dr.riskli ? 'pointer' : 'default'
+                              }} title={dr.sebep}>
+                              {dr.isim}
                               {idx < detay.nobetciler_detay.length - 1 ? ' • ' : ''}
                             </span>
                           )) : detay.nobetciler.join(' • ')}
